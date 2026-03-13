@@ -7,7 +7,7 @@ import rssCache from '../lib/rss/rssCache.js';
 import schedule from 'node-schedule';
 import tools from '../components/tool.js';
 
-export default class rssPush extends plugin {
+export default class RssPlugin extends plugin {
   constructor() {
     super({
       name: 'crystelf RSS订阅',
@@ -31,7 +31,7 @@ export default class rssPush extends plugin {
     const cronRule = '*/5 * * * *'; 
     if (!global.__rss_job_scheduled) {
       schedule.scheduleJob(cronRule, () => {
-        logger.mark(`[rssPush] 定时触发 (${cronRule})`);
+        logger.mark(`[RSS] 定时触发 (${cronRule})`);
         this.pushFeeds();
       });
       global.__rss_job_scheduled = true;
@@ -41,10 +41,12 @@ export default class rssPush extends plugin {
   // --- 内部工具：只提取 URL 末尾的数字作为文件名 ---
   getSafeFilename(url) {
     if (!url) return `rss_${Date.now()}`;
+    // 匹配末尾的一串数字
     const match = url.match(/(\d+)(?:\/|\?|#|$)/);
     if (match && match[1]) {
       return match[1];
     }
+    // 如果没找到数字，兜底使用时间戳
     return `rss_item_${Date.now()}`;
   }
 
@@ -72,8 +74,7 @@ export default class rssPush extends plugin {
     if (!url) return e.reply('请提供链接');
     let latest;
     try { 
-      // 60秒自动撤回提示语
-      await e.reply('正在解析...', false, { recallMsg: 60 }); 
+      e.reply('正在解析...'); 
       latest = await rssTools.fetchFeed(url); 
     } catch (err) { 
       return e.reply(`失败: ${err.message}`); 
@@ -81,6 +82,7 @@ export default class rssPush extends plugin {
     if (!latest?.length) return e.reply('无内容');
 
     const post = latest[0];
+    // 使用提取的数字命名
     const safeId = this.getSafeFilename(post.link);
     const tempPath = path.join(this.rssTempDir, `${safeId}_preview.jpg`);
     
@@ -89,20 +91,25 @@ export default class rssPush extends plugin {
     if (desc.startsWith(cleanTitle)) desc = desc.substring(cleanTitle.length).trim();
     const msgBody = `[RSS预览] ${cleanTitle}\n${desc ? desc + '\n' : ''}${post.link}\n${this.formatDate(post.date)}`;
 
+    let savedPaths = [];
     try {
       await e.reply(msgBody);
       if (desc || post.content?.includes('<img') || post.image) {
-        // 60秒自动撤回提示语
-        await e.reply('正在生成截图...', false, { recallMsg: 60 });
-        const resPath = await screenshot.generateScreenshot(post, tempPath);
-        if (resPath && fs.existsSync(resPath)) {
-          await e.reply(segment.image(resPath));
+        await e.reply('正在生成截图...');
+        savedPaths = await screenshot.generateScreenshot(post, tempPath);
+        if (savedPaths?.length) {
+          for (const p of savedPaths) {
+            const base64 = fs.readFileSync(p, 'base64');
+            await e.reply(segment.image(`base64://${base64}`));
+          }
         }
       }
     } catch (err) { 
       e.reply('生成截图预览失败'); 
     } finally {
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      if (Array.isArray(savedPaths)) {
+        savedPaths.forEach(p => fs.existsSync(p) && fs.unlinkSync(p));
+      }
     }
   }
 
@@ -150,21 +157,29 @@ export default class rssPush extends plugin {
             const safeId = this.getSafeFilename(post.link);
             const tempPath = path.join(this.rssTempDir, `${safeId}_${groupId}.jpg`);
             
+            let savedPaths = [];
             try {
-              const resPath = await screenshot.generateScreenshot(post, tempPath);
-              if (resPath && fs.existsSync(resPath)) {
-                await group.sendMsg(segment.image(resPath));
+              savedPaths = await screenshot.generateScreenshot(post, tempPath);
+              if (savedPaths?.length) {
+                for (const p of savedPaths) {
+                  const base64 = fs.readFileSync(p, 'base64');
+                  await group.sendMsg(segment.image(`base64://${base64}`));
+                }
               }
             } catch (e) { 
-              // 忽略发送错误
+              // 忽略错误
             } finally { 
-              if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+              if (Array.isArray(savedPaths)) {
+                savedPaths.forEach(p => fs.existsSync(p) && fs.unlinkSync(p));
+              }
             }
           }
         }
       }
     }
   }
+  
+  // ================= 基础配置方法展开 =================
   
   async _saveFeed(e, url) {
     let feeds = configControl.get('feeds') || [];

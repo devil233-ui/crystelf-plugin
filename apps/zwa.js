@@ -26,7 +26,7 @@ export class ZWA extends plugin {
       name: '早中晚安',
       dsc: 'zzw',
       event: 'message',
-      priority: -1110,
+      priority: 1145141,
       rule: [
         {
           reg: '^(#|/)?晚上好$|^(#|/)?安$|^(#|/)?晚安$|^(#|/)?睡了$|^(#|/)?睡觉$|^(#|/)?睡咯$',
