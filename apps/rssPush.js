@@ -28,7 +28,7 @@ export default class rssPush extends plugin {
       fs.mkdirSync(this.rssTempDir, { recursive: true });
     }
 
-    const cronRule = '*/5 * * * *'; 
+    const cronRule = '1/5 * * * *'; 
     if (!global.__rss_job_scheduled) {
       schedule.scheduleJob(cronRule, () => {
         logger.mark(`[rssPush] 定时触发 (${cronRule})`);
