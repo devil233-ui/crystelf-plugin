@@ -28,6 +28,26 @@ export default class rssPush extends plugin {
       fs.mkdirSync(this.rssTempDir, { recursive: true });
     }
 
+    // --- 【新增】黑名单配置文件初始化 ---
+    this.blacklistDir = path.join(process.cwd(), 'data', 'crystelf');
+    this.blacklistPath = path.join(this.blacklistDir, 'rssBlacklist.json');
+    
+    if (!fs.existsSync(this.blacklistDir)) {
+      fs.mkdirSync(this.blacklistDir, { recursive: true });
+    }
+    
+    // 如果配置文件不存在，自动生成一份默认模板
+    if (!fs.existsSync(this.blacklistPath)) {
+      const defaultBlacklist = [
+        {
+        link: 'miyoushe.com/sr', // 留空则代表全局生效，不论哪个链接只要命中关键词就杀
+        keywords: ['建议体验'] 
+      }
+      ];
+      fs.writeFileSync(this.blacklistPath, JSON.stringify(defaultBlacklist, null, 2), 'utf-8');
+      logger.mark(`[rssPush] 已生成默认黑名单配置文件: ${this.blacklistPath}`);
+    }
+
     const cronRule = '1/5 * * * *'; 
     if (!global.__rss_job_scheduled) {
       schedule.scheduleJob(cronRule, () => {
@@ -67,23 +87,18 @@ export default class rssPush extends plugin {
     } catch (e) { return ''; }
   }
 
-  // --- 黑名单过滤逻辑 ---
+  // --- 黑名单过滤逻辑 (外部配置版) ---
   isBlacklisted(post) {
-    // 规则配置：只有当 "文章链接" 包含 link 的值，且 "标题或正文" 包含 keywords 中的词时，才拦截
-    const blacklistRules = [
-    //   {
-    //     link: 'miyoushe.com/sr', // 针对星穹铁道版区
-    //     keywords: ['鸣潮', '鸣潮先约', '问卷调查'] // 触发拦截的关键词
-    //   },
-    //   {
-    //     link: 'miyoushe.com/ys', // 针对原神版区（示例）
-    //     keywords: ['前瞻直播', '周边上新']
-    //   },
-      {
-        link: 'miyoushe.com/sr', // 留空则代表全局生效，不论哪个链接只要命中关键词就杀
-        keywords: ['建议体验'] 
+    let blacklistRules = [];
+    try {
+      // 动态读取配置文件，即改即生效
+      if (fs.existsSync(this.blacklistPath)) {
+        blacklistRules = JSON.parse(fs.readFileSync(this.blacklistPath, 'utf-8'));
       }
-    ];
+    } catch (e) {
+      if (global.logger) global.logger.error(`[RSS黑名单] 读取配置失败: ${e.message}`);
+      return false; // 读取失败则默认放行
+    }
 
     const postLink = (post.link || '').toLowerCase();
     const titleAndContent = ((post.title || '') + (post.content || '')).toLowerCase();
@@ -91,11 +106,11 @@ export default class rssPush extends plugin {
     for (const rule of blacklistRules) {
       const targetLink = (rule.link || '').toLowerCase();
       
-      // 校验 1：如果规则指定了链接特征，但当前文章的 URL 里没包含这串字符，直接跳过该规则
+      // 校验 1：如果规则指定了链接特征，但不匹配，直接跳过
       if (targetLink && !postLink.includes(targetLink)) continue;
       
-      // 校验 2：标题或正文中是否包含关键词
-      if (rule.keywords.some(kw => titleAndContent.includes(kw.toLowerCase()))) {
+      // 校验 2：确保 keywords 是数组，且包含了黑名单词汇
+      if (Array.isArray(rule.keywords) && rule.keywords.some(kw => titleAndContent.includes(kw.toLowerCase()))) {
         if (global.logger) global.logger.mark(`[RSS拦截] 触发黑名单双重校验: 链接[${postLink}] 包含了关键词`);
         return true; // 拦截！
       }
