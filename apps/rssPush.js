@@ -67,6 +67,42 @@ export default class rssPush extends plugin {
     } catch (e) { return ''; }
   }
 
+  // --- 黑名单过滤逻辑 ---
+  isBlacklisted(post) {
+    // 规则配置：只有当 "文章链接" 包含 link 的值，且 "标题或正文" 包含 keywords 中的词时，才拦截
+    const blacklistRules = [
+    //   {
+    //     link: 'miyoushe.com/sr', // 针对星穹铁道版区
+    //     keywords: ['鸣潮', '鸣潮先约', '问卷调查'] // 触发拦截的关键词
+    //   },
+    //   {
+    //     link: 'miyoushe.com/ys', // 针对原神版区（示例）
+    //     keywords: ['前瞻直播', '周边上新']
+    //   },
+      {
+        link: 'miyoushe.com/sr', // 留空则代表全局生效，不论哪个链接只要命中关键词就杀
+        keywords: ['建议体验'] 
+      }
+    ];
+
+    const postLink = (post.link || '').toLowerCase();
+    const titleAndContent = ((post.title || '') + (post.content || '')).toLowerCase();
+
+    for (const rule of blacklistRules) {
+      const targetLink = (rule.link || '').toLowerCase();
+      
+      // 校验 1：如果规则指定了链接特征，但当前文章的 URL 里没包含这串字符，直接跳过该规则
+      if (targetLink && !postLink.includes(targetLink)) continue;
+      
+      // 校验 2：标题或正文中是否包含关键词
+      if (rule.keywords.some(kw => titleAndContent.includes(kw.toLowerCase()))) {
+        if (global.logger) global.logger.mark(`[RSS拦截] 触发黑名单双重校验: 链接[${postLink}] 包含了关键词`);
+        return true; // 拦截！
+      }
+    }
+    return false; // 安全放行
+  }
+
   async pullFeedNow(e) {
     const url = e.msg.replace(/^#?rss拉取\s*/i, '').trim();
     if (!url) return e.reply('请提供链接');
@@ -80,7 +116,10 @@ export default class rssPush extends plugin {
     }
     if (!latest?.length) return e.reply('无内容');
 
-    const post = latest[0];
+    // 从最新文章中找到第一篇没有触发黑名单的
+    const post = latest.find(p => !this.isBlacklisted(p));
+    if (!post) return e.reply('最新文章均触发黑名单，已被拦截。', false, { recallMsg: 60 });
+
     const safeId = this.getSafeFilename(post.link);
     const tempPath = path.join(this.rssTempDir, `${safeId}_preview.jpg`);
     
@@ -124,7 +163,10 @@ export default class rssPush extends plugin {
         if (!(await rssCache.has('global_dedupe', latest[i].link))) {
           const pubDate = latest[i].date ? new Date(latest[i].date).getTime() : Date.now();
           if (Date.now() - pubDate < 86400000) {
-            newItems.push(latest[i]);
+            // 通过黑名单检测才允许推入发送队列
+            if (!this.isBlacklisted(latest[i])) {
+              newItems.push(latest[i]);
+            }
           }
         }
       }
