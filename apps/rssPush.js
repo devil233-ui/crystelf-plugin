@@ -100,6 +100,10 @@ export default class rssPush extends plugin {
       return false; // 读取失败则默认放行
     }
 
+    if (!Array.isArray(blacklistRules)) {
+      blacklistRules = [];
+    }
+
     const postLink = (post.link || '').toLowerCase();
     const titleAndContent = ((post.title || '') + (post.content || '')).toLowerCase();
 
