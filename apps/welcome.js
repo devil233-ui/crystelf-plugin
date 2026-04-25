@@ -1,12 +1,12 @@
-import configControl from '../lib/config/configControl.js';
-import tools from '../components/tool.js';
+import configControl from "../lib/config/configControl.js";
+import tools from "../components/tool.js";
 
 export class welcomeNewcomer extends plugin {
   constructor() {
     super({
-      name: 'welcome-newcomer',
-      dsc: '新人入群欢迎',
-      event: 'notice.group.increase',
+      name: "welcome-newcomer",
+      dsc: "新人入群欢迎",
+      event: "notice.group.increase",
       priority: -1000,
     });
   }
@@ -18,15 +18,15 @@ export class welcomeNewcomer extends plugin {
       const groupId = e.group_id;
       const cdKey = `Yz:newcomers:${groupId}`;
       if (await redis.get(cdKey)) return;
-      await redis.set(cdKey, '1', { EX: 30 });
-      const newcomerCfg = (await configControl.get('newcomer')) || {};
+      await redis.set(cdKey, "1", { EX: 30 });
+      const newcomerCfg = (await configControl.get("newcomer")) || {};
       const welcomeCfg = newcomerCfg[groupId] || {};
-      const authCfg = await configControl.get('auth');
+      const authCfg = await configControl.get("auth");
       const groupAuthCfg = authCfg?.groups?.[groupId] || authCfg?.default || {};
-      const msgList = [segment.at(e.user_id)];
+      const msgList = [ segment.at(e.user_id) ];
       if (welcomeCfg.text) msgList.push(welcomeCfg.text);
       if (welcomeCfg.image) msgList.push(segment.image(welcomeCfg.image));
-      if (!welcomeCfg.text && !welcomeCfg.image) msgList.push('欢迎新人~！');
+      if (!welcomeCfg.text && !welcomeCfg.image) msgList.push("欢迎新人~！");
       if (groupAuthCfg?.enable) {
         // 缓存欢迎消息
         const redisKey = `Yz:pendingWelcome:${groupId}:${e.user_id}`;
@@ -36,7 +36,7 @@ export class welcomeNewcomer extends plugin {
       // 未开启验证
       await e.reply(msgList);
     } catch (err) {
-      return e.reply('加群欢迎出现错误，请重新设置加群欢迎', true);
+      return e.reply("加群欢迎出现错误，请重新设置加群欢迎", true);
     }
   }
 }

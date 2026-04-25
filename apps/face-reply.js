@@ -1,13 +1,13 @@
-import ConfigControl from '../lib/config/configControl.js';
-import Message from '../lib/yunzai/message.js';
-import YunzaiUtils from '../lib/yunzai/utils.js';
+import ConfigControl from "../lib/config/configControl.js";
+import Message from "../lib/yunzai/message.js";
+import YunzaiUtils from "../lib/yunzai/utils.js";
 
 export class FaceReply extends plugin {
   constructor() {
     super({
-      name: 'face-reply',
-      dsc: '给消息中的表情贴上回应',
-      event: 'message.group',
+      name: "face-reply",
+      dsc: "给消息中的表情贴上回应",
+      event: "message.group",
       priority: -114,
     });
   }
@@ -16,9 +16,9 @@ export class FaceReply extends plugin {
     if (!e.message_id || e.message.length === 0) return;
     let face = [];
     e.message.forEach((m) => {
-      if (m.type === 'face') {
+      if (m.type === "face") {
         face.push({ id: m.id });
-      } else if (m.type === 'text') {
+      } else if (m.type === "text") {
         let emojiList = exEmojis(m.text);
         if (emojiList.length) {
           for (const emoji of emojiList) {

@@ -1,12 +1,12 @@
-import Parser from 'rss-parser';
+import Parser from "rss-parser";
 
 const parser = new Parser();
 //去掉不干净的东西
 const cleanHTML = (html) => {
   return html
-    .replace(/该渲染由.*?<\/blockquote>/gs, '')
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '');
+    .replace(/该渲染由.*?<\/blockquote>/gs, "")
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "");
 };
 
 const rssTools = {
@@ -22,12 +22,12 @@ const rssTools = {
       return feed.items.map((item) => ({
         title: item.title,
         link: item.link,
-        content: cleanHTML(item['content:encoded'] || item.content || item.description || ''),
+        content: cleanHTML(item["content:encoded"] || item.content || item.description || ""),
         author: item.creator || item.author || feed.title,
         date: item.pubDate || item.isoDate,
         feedTitle: feed.title,
         feedLink: feed.link,
-        image: feed.image?.url || feed.logo || '',
+        image: feed.image?.url || feed.logo || "",
       }));
     } catch (err) {
       logger.error(`RSS 拉取失败: ${url}`, err);

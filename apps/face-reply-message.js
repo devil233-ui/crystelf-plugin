@@ -4,14 +4,14 @@ import Message from "../lib/yunzai/message.js";
 export class FaceReplyMessage extends plugin {
   constructor() {
     super({
-      name: 'FaceReplyMessage',
-      dsc: '主动回应表情,查看id等',
-      event: 'message.group',
+      name: "FaceReplyMessage",
+      dsc: "主动回应表情,查看id等",
+      event: "message.group",
       priority: -115,
       rule:[
         {
-          reg: '^(#|/)?回应([\\s\\S]*)?$',
-          fnc: 're'
+          reg: "^(#|/)?回应([\\s\\S]*)?$",
+          fnc: "re"
         }
       ]
     });
@@ -21,14 +21,14 @@ export class FaceReplyMessage extends plugin {
     if(!e.message_id||e.message.length === 0) return;
     let face = [];
     e.message.forEach((m)=>{
-      if(m.type === 'face'){
-        face.push({id:m.id,type:'face1'});
-      }else if(m.type === 'text'){
+      if(m.type === "face"){
+        face.push({id:m.id,type:"face1"});
+      }else if(m.type === "text"){
         let emojiList = exEmojis(m.text);
         if(emojiList.length){
           for(const emoji of emojiList){
             const id = emoji.codePointAt(0);
-            face.push({id:id,type:'face2'});
+            face.push({id:id,type:"face2"});
           }
         }
       }

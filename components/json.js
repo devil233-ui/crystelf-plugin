@@ -1,15 +1,15 @@
-import fs from 'fs';
-import path from 'path';
-import Version from '../lib/system/version.js';
+import fs from "fs";
+import path from "path";
+import Version from "../lib/system/version.js";
 
 const fsp = fs.promises;
 const Plugin_Name = Version.name;
 
 const _path = process.cwd();
-const getRoot = (root = '') => {
-  if (root === 'root' || root === 'yunzai') {
+const getRoot = (root = "") => {
+  if (root === "root" || root === "yunzai") {
     root = `${_path}/`;
-  } else if (!root || root === '') {
+  } else if (!root || root === "") {
     root = `${_path}/plugins/${Plugin_Name}/`;
   }
   return root;
@@ -19,15 +19,15 @@ let fc = {
   /**
    * 递归创建目录结构
    */
-  async createDir(p = '', root = '', includeFile = false) {
+  async createDir(p = "", root = "", includeFile = false) {
     root = getRoot(root);
-    const pathList = p.split('/');
+    const pathList = p.split("/");
     let nowPath = root;
 
     for (let idx = 0; idx < pathList.length; idx++) {
       const name = pathList[idx].trim();
       if (!includeFile && idx <= pathList.length - 1) {
-        nowPath += name + '/';
+        nowPath += name + "/";
         if (name) {
           try {
             await fsp.access(nowPath);
@@ -46,7 +46,7 @@ let fc = {
    */
   async readJSON(filePath) {
     try {
-      const data = await fsp.readFile(filePath, 'utf8');
+      const data = await fsp.readFile(filePath, "utf8");
       return JSON.parse(data);
     } catch (e) {
       return {};
@@ -60,7 +60,7 @@ let fc = {
    * @returns {Promise<void>}
    */
   async writeJSON(filePath, data) {
-    await fsp.writeFile(filePath, JSON.stringify(data, null, 4), 'utf8');
+    await fsp.writeFile(filePath, JSON.stringify(data, null, 4), "utf8");
   },
 
   /**
@@ -71,12 +71,12 @@ let fc = {
    */
   mergeConfig(base, addon) {
     const result = { ...base };
-    for (const [key, value] of Object.entries(addon)) {
+    for (const [ key, value ] of Object.entries(addon)) {
       if (!(key in result)) {
         result[key] = value;
       } else if (
-        typeof result[key] === 'object' &&
-        typeof value === 'object' &&
+        typeof result[key] === "object" &&
+        typeof value === "object" &&
         !Array.isArray(result[key]) &&
         !Array.isArray(value)
       ) {
@@ -95,7 +95,7 @@ let fc = {
 
     for (const entry of entries) {
       if (entry.isFile()) {
-        if (path.extname(entry.name) === `.${extension}` && !entry.name.startsWith('_')) {
+        if (path.extname(entry.name) === `.${extension}` && !entry.name.startsWith("_")) {
           files.push(entry.name);
         }
       } else if (entry.isDirectory()) {

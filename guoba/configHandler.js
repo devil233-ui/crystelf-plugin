@@ -1,9 +1,9 @@
-import ConfigControl from '../lib/config/configControl.js';
-import UserConfigManager from '../lib/ai/userConfigManager.js';
-import lodash from 'lodash';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import ConfigControl from "../lib/config/configControl.js";
+import UserConfigManager from "../lib/ai/userConfigManager.js";
+import lodash from "lodash";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 /**
  * 配置处理逻辑
@@ -16,16 +16,16 @@ import { fileURLToPath } from 'url';
  * @param {string} prefix - 前缀
  * @returns {Object} 扁平化的对象
  */
-function flattenObject(obj, prefix = '') {
+function flattenObject(obj, prefix = "") {
   const result = {};
 
-  for (const [key, value] of Object.entries(obj)) {
+  for (const [ key, value ] of Object.entries(obj)) {
     // 跳过以?开头的注释字段
-    if (key.startsWith('?')) continue;
+    if (key.startsWith("?")) continue;
 
     const newKey = prefix ? `${prefix}.${key}` : key;
 
-    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
       // 递归处理嵌套对象
       Object.assign(result, flattenObject(value, newKey));
     } else {
@@ -37,10 +37,10 @@ function flattenObject(obj, prefix = '') {
 }
 
 const NUMBER_ARRAY_FIELDS = new Set([
-  'ai.blacklistGroups',
-  'ai.whitelistGroups',
-  'ai.imageAnalysisBlacklistUsers',
-  'ai.planner.idleCheckBotIds',
+  "ai.blacklistGroups",
+  "ai.whitelistGroups",
+  "ai.imageAnalysisBlacklistUsers",
+  "ai.planner.idleCheckBotIds",
 ]);
 
 function normalizeFieldValue(fieldPath, value) {
@@ -67,8 +67,8 @@ export function getConfigData() {
   const result = {};
 
   // 将各个配置文件的内容扁平化到结果对象中
-  for (const [configName, configData] of Object.entries(allConfigs)) {
-    if (configName === 'feeds' || configName === 'newcomer') continue;
+  for (const [ configName, configData ] of Object.entries(allConfigs)) {
+    if (configName === "feeds" || configName === "newcomer") continue;
     // 将配置数据扁平化
     const flattened = flattenObject(configData, configName);
     Object.assign(result, flattened);
@@ -88,24 +88,24 @@ export async function setConfigData(data, { Result }) {
     // 将扁平化的数据重新组织成配置文件结构
     const configUpdates = {};
 
-    for (const [fieldPath, value] of Object.entries(data)) {
-      const parts = fieldPath.split('.');
+    for (const [ fieldPath, value ] of Object.entries(data)) {
+      const parts = fieldPath.split(".");
       const configName = parts[0];
 
       // 跳过feeds和newcomer配置
-      if (configName === 'feeds' || configName === 'newcomer') continue;
+      if (configName === "feeds" || configName === "newcomer") continue;
 
       if (!configUpdates[configName]) {
         configUpdates[configName] = {};
       }
 
       // 使用lodash.set设置嵌套属性
-      const keyPath = parts.slice(1).join('.');
+      const keyPath = parts.slice(1).join(".");
       lodash.set(configUpdates[configName], keyPath, normalizeFieldValue(fieldPath, value));
     }
 
     // 只更新实际有变化的配置文件
-    for (const [configName, newConfigData] of Object.entries(configUpdates)) {
+    for (const [ configName, newConfigData ] of Object.entries(configUpdates)) {
       // 获取现有配置
       const existingConfig = ConfigControl.get(configName) || {};
 
@@ -124,10 +124,10 @@ export async function setConfigData(data, { Result }) {
       }
     }
 
-    return Result.ok({}, '保存成功~');
+    return Result.ok({}, "保存成功~");
   } catch (error) {
-    logger.error('[crystelf-plugin] 保存配置失败:', error);
-    return Result.error('保存配置失败: ' + error.message);
+    logger.error("[crystelf-plugin] 保存配置失败:", error);
+    return Result.error("保存配置失败: " + error.message);
   }
 }
 
@@ -141,10 +141,10 @@ export async function resetConfig({ Result }) {
     // 获取插件目录路径
     const __filename = fileURLToPath(import.meta.url);
     const pluginDir = path.dirname(__filename);
-    const configDir = path.join(pluginDir, '..', '..', 'config');
+    const configDir = path.join(pluginDir, "..", "..", "config");
 
     // 获取数据目录路径
-    const dataConfigPath = path.join(process.cwd(), 'data', 'crystelf');
+    const dataConfigPath = path.join(process.cwd(), "data", "crystelf");
 
     // 确保数据目录存在
     if (!fs.existsSync(dataConfigPath)) {
@@ -152,22 +152,22 @@ export async function resetConfig({ Result }) {
     }
 
     // 读取所有配置文件
-    const configFiles = fs.readdirSync(configDir).filter((file) => file.endsWith('.json'));
+    const configFiles = fs.readdirSync(configDir).filter((file) => file.endsWith(".json"));
     const defaultConfigs = {};
 
     // 复制每个配置文件
     for (const file of configFiles) {
-      const configName = path.basename(file, '.json');
+      const configName = path.basename(file, ".json");
       const sourcePath = path.join(configDir, file);
       const targetPath = path.join(dataConfigPath, file);
 
       try {
         // 读取源配置文件
-        const configContent = fs.readFileSync(sourcePath, 'utf8');
+        const configContent = fs.readFileSync(sourcePath, "utf8");
         const configData = JSON.parse(configContent);
 
         // 写入目标配置文件
-        fs.writeFileSync(targetPath, configContent, 'utf8');
+        fs.writeFileSync(targetPath, configContent, "utf8");
 
         // 添加到默认配置对象
         defaultConfigs[configName] = configData;
@@ -183,7 +183,7 @@ export async function resetConfig({ Result }) {
     // 清除用户配置缓存
     UserConfigManager.clearCache();
 
-    return Result.ok({}, '重置成功~');
+    return Result.ok({}, "重置成功~");
   } catch (error) {
     logger.error(`[crystelf-ai] 重置配置失败: ${error.message}`);
     return Result.error({}, `重置失败: ${error.message}`);
@@ -198,7 +198,7 @@ export async function resetConfig({ Result }) {
 export async function exportConfig({ Result }) {
   try {
     const config = await getConfigData();
-    return Result.ok({ config }, '导出成功~');
+    return Result.ok({ config }, "导出成功~");
   } catch (error) {
     logger.error(`[crystelf-ai] 导出配置失败: ${error.message}`);
     return Result.error({}, `导出失败: ${error.message}`);
@@ -214,13 +214,13 @@ export async function exportConfig({ Result }) {
 export async function importConfig(data, { Result }) {
   try {
     if (!data.config) {
-      return Result.error({}, '导入数据格式错误');
+      return Result.error({}, "导入数据格式错误");
     }
 
     // 验证配置
     const validationResult = validateConfig(data.config);
     if (!validationResult.valid) {
-      return Result.error({}, `配置验证失败: ${validationResult.errors.join(', ')}`);
+      return Result.error({}, `配置验证失败: ${validationResult.errors.join(", ")}`);
     }
 
     // 使用 ConfigControl.setMultiple 保存配置
@@ -229,7 +229,7 @@ export async function importConfig(data, { Result }) {
     // 清除用户配置缓存
     UserConfigManager.clearCache();
 
-    return Result.ok({}, '导入成功~');
+    return Result.ok({}, "导入成功~");
   } catch (error) {
     logger.error(`[crystelf-ai] 导入配置失败: ${error.message}`);
     return Result.error({}, `导入失败: ${error.message}`);
@@ -246,111 +246,111 @@ function validateConfig(configType, config = null) {
   // 如果只有一个参数,则认为是配置对象,进行通用验证
   if (config === null) {
     config = configType;
-    configType = 'general';
+    configType = "general";
   }
 
   const errors = [];
 
   // 根据配置类型进行特定验证
   switch (configType) {
-    case 'ai':
+    case "ai":
       if (!config.apiUrl) {
-        errors.push('API地址不能为空');
+        errors.push("API地址不能为空");
       }
 
       if (!config.apiKey) {
-        errors.push('API密钥不能为空');
+        errors.push("API密钥不能为空");
       }
 
       if (!config.model) {
-        errors.push('主对话模型不能为空');
+        errors.push("主对话模型不能为空");
       }
 
       if (!config.workingModel) {
-        errors.push('工作模型不能为空');
+        errors.push("工作模型不能为空");
       }
 
       if (!config.multimodalWorkingModel) {
-        errors.push('多模态模型不能为空');
+        errors.push("多模态模型不能为空");
       }
 
       if (!config.persona) {
-        errors.push('晶灵人设不能为空');
+        errors.push("晶灵人设不能为空");
       }
 
       if (config.temperature !== undefined && (config.temperature < 0 || config.temperature > 2)) {
-        errors.push('温度值必须在0-2之间');
+        errors.push("温度值必须在0-2之间");
       }
 
       if (config.maxIterations !== undefined && config.maxIterations < -1) {
-        errors.push('最大迭代次数不能小于-1');
+        errors.push("最大迭代次数不能小于-1");
       }
 
       if (config.historyCount !== undefined && (config.historyCount < 1 || config.historyCount > 500)) {
-        errors.push('历史条数必须在1-500之间');
+        errors.push("历史条数必须在1-500之间");
       }
 
       if (config.blacklistGroups && !Array.isArray(config.blacklistGroups)) {
-        errors.push('黑名单群必须是数组');
+        errors.push("黑名单群必须是数组");
       }
 
       if (config.whitelistGroups && !Array.isArray(config.whitelistGroups)) {
-        errors.push('白名单群必须是数组');
+        errors.push("白名单群必须是数组");
       }
 
       if (config.nicknames && !Array.isArray(config.nicknames)) {
-        errors.push('额外昵称必须是数组');
+        errors.push("额外昵称必须是数组");
       }
       break;
 
-    case '60s':
+    case "60s":
       // 验证60s新闻配置
       if (!config.url) {
-        errors.push('60s新闻API地址不能为空');
+        errors.push("60s新闻API地址不能为空");
       }
       break;
 
-    case 'auth':
+    case "auth":
       // 验证验证配置
       if (!config.url) {
-        errors.push('验证API地址不能为空');
+        errors.push("验证API地址不能为空");
       }
       break;
 
-    case 'music':
+    case "music":
       // 验证音乐配置
       if (!config.url) {
-        errors.push('音乐服务器url不能为空');
+        errors.push("音乐服务器url不能为空");
       }
       if (!config.username) {
-        errors.push('音乐服务器用户名不能为空');
+        errors.push("音乐服务器用户名不能为空");
       }
       if (!config.password) {
-        errors.push('音乐服务器密码不能为空');
+        errors.push("音乐服务器密码不能为空");
       }
       if (!config.quality) {
-        errors.push('音乐质量不能为空');
+        errors.push("音乐质量不能为空");
       }
       break;
 
-    case 'poke':
+    case "poke":
       // 验证戳一戳配置
       if (config.replyPoke !== undefined && (config.replyPoke < 0 || config.replyPoke > 1)) {
-        errors.push('戳一戳概率必须在0-1之间');
+        errors.push("戳一戳概率必须在0-1之间");
       }
       break;
 
-    case 'profile':
+    case "profile":
       // 验证个人资料配置
       if (!config.nickName) {
-        errors.push('机器人昵称不能为空');
+        errors.push("机器人昵称不能为空");
       }
       break;
 
-    case 'coreConfig':
+    case "coreConfig":
       // 验证核心配置
       if (!config.coreUrl) {
-        errors.push('核心url不能为空');
+        errors.push("核心url不能为空");
       }
       break;
 

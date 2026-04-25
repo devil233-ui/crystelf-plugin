@@ -1,12 +1,12 @@
-import ConfigControl from '../lib/config/configControl.js';
-import cfg from '../../../lib/config/config.js';
-import PluginsLoader from '../../../lib/plugins/loader.js';
-import initDatabase from '../lib/ai/db.js';
-import SessionManager from '../lib/ai/session.js';
-import OpenAIChatClient from '../lib/ai/openai-client.js';
-import HumanizeEngine from '../lib/ai/humanize/index.js';
-import { MessageQueueManager } from '../lib/ai/queue.js';
-import RateLimiter from '../lib/ai/rate-limiter.js';
+import ConfigControl from "../lib/config/configControl.js";
+import cfg from "../../../lib/config/config.js";
+import PluginsLoader from "../../../lib/plugins/loader.js";
+import initDatabase from "../lib/ai/db.js";
+import SessionManager from "../lib/ai/session.js";
+import OpenAIChatClient from "../lib/ai/openai-client.js";
+import HumanizeEngine from "../lib/ai/humanize/index.js";
+import { MessageQueueManager } from "../lib/ai/queue.js";
+import RateLimiter from "../lib/ai/rate-limiter.js";
 import {
   buildStoredMessageFromEvent,
   extractContent,
@@ -17,17 +17,17 @@ import {
   isQuotingBot,
   sendAIResponse,
   sendEmoji,
-} from '../lib/ai/message.js';
-import runChat from '../lib/ai/chat-engine.js';
-import { processImage } from '../lib/ai/image-analyzer.js';
+} from "../lib/ai/message.js";
+import runChat from "../lib/ai/chat-engine.js";
+import { processImage } from "../lib/ai/image-analyzer.js";
 
-const AI_PLUGIN_NAME = 'crystelfAI';
+const AI_PLUGIN_NAME = "crystelfAI";
 const POKE_COOLDOWN_MS = 10 * 60_000;
 const IDLE_CHECK_INTERVAL_MS = 60_000;
 
 const runtime = {
   ready: false,
-  configHash: '',
+  configHash: "",
   config: null,
   db: null,
   sessionManager: null,
@@ -53,11 +53,11 @@ const runtime = {
 
 function withDefaults(aiConfig = {}, profile = {}) {
   const merged = {
-    apiUrl: 'https://api.openai.com/v1',
-    apiKey: '',
-    model: 'deepseek-ai/DeepSeek-V3.2-Exp',
-    workingModel: 'deepseek-ai/DeepSeek-V3.2-Exp',
-    multimodalWorkingModel: 'Qwen/Qwen2.5-VL-72B-Instruct',
+    apiUrl: "https://api.openai.com/v1",
+    apiKey: "",
+    model: "deepseek-ai/DeepSeek-V3.2-Exp",
+    workingModel: "deepseek-ai/DeepSeek-V3.2-Exp",
+    multimodalWorkingModel: "Qwen/Qwen2.5-VL-72B-Instruct",
     isMultimodal: true,
     autoImageAnalysis: true,
     maxContextTokens: 128,
@@ -77,24 +77,24 @@ function withDefaults(aiConfig = {}, profile = {}) {
       maxDelayMs: 600_000,
     },
     persona:
-      'You are Jingling, a clever and emotionally aware group chat companion. You can be helpful when needed, but you should still sound like a real member of the group instead of a customer-support bot.',
+      "You are Jingling, a clever and emotionally aware group chat companion. You can be helpful when needed, but you should still sound like a real member of the group instead of a customer-support bot.",
     personality: {
       states: [
-        'Energetic and quick-witted, likes joining the flow of the conversation',
-        'Sleepy and a little lazy, replies become shorter and softer',
-        'Focused and serious, gives more solid and thoughtful answers',
-        'Playful and lightly teasing, but never mean-spirited',
+        "Energetic and quick-witted, likes joining the flow of the conversation",
+        "Sleepy and a little lazy, replies become shorter and softer",
+        "Focused and serious, gives more solid and thoughtful answers",
+        "Playful and lightly teasing, but never mean-spirited",
       ],
       stateProbability: 0.15,
     },
     replyStyle: {
       baseStyle:
-        'Speak like a real group member: natural, concise, a little expressive, and never list-like.',
+        "Speak like a real group member: natural, concise, a little expressive, and never list-like.",
       multipleStyles: [
-        'Super lively, with a bit more excitement and energy',
-        'A little cheeky, but not passive-aggressive',
-        'Laid-back and low-energy, using fewer words',
-        'Feels like joining a running joke with a light tease',
+        "Super lively, with a bit more excitement and energy",
+        "A little cheeky, but not passive-aggressive",
+        "Laid-back and low-energy, using fewer words",
+        "Feels like joining a running joke with a light tease",
       ],
       multipleProbability: 0.2,
     },
@@ -123,22 +123,22 @@ function withDefaults(aiConfig = {}, profile = {}) {
     emoji: {
       enabled: false,
       replyProbability: 0.3,
-      characters: ['zhenxun'],
+      characters: [ "zhenxun" ],
       availableEmotions: [
-        'happy',
-        'sad',
-        'angry',
-        'surprised',
-        'confused',
-        'excited',
-        'tired',
-        'shy',
-        'proud',
-        'default',
-        'funny',
-        'cute',
-        'love',
-        'neutral',
+        "happy",
+        "sad",
+        "angry",
+        "surprised",
+        "confused",
+        "excited",
+        "tired",
+        "shy",
+        "proud",
+        "default",
+        "funny",
+        "cute",
+        "love",
+        "neutral",
       ],
       useAISelection: false,
     },
@@ -152,11 +152,11 @@ function withDefaults(aiConfig = {}, profile = {}) {
   };
 
   const nicknames = new Set(
-    [profile?.nickName, ...(Array.isArray(merged.nicknames) ? merged.nicknames : [])].filter(
+    [ profile?.nickName, ...(Array.isArray(merged.nicknames) ? merged.nicknames : []) ].filter(
       Boolean
     )
   );
-  merged.nicknames = [...nicknames];
+  merged.nicknames = [ ...nicknames ];
   return merged;
 }
 
@@ -206,7 +206,7 @@ function ensureIdleCheckTimer() {
     return;
   }
 
-  runtime.idleCheckTimer = setInterval(async () => {
+  runtime.idleCheckTimer = setInterval(async() => {
     if (!runtime.ready || !runtime.config?.apiKey || !runtime.config?.planner?.enabled) {
       return;
     }
@@ -216,7 +216,7 @@ function ensureIdleCheckTimer() {
     const idleThreshold = cfg.planner.idleThresholdMs ?? 30 * 60_000;
     const messageCountThreshold = cfg.planner.idleMessageCount ?? 100;
 
-    for (const [sessionId, lastTime] of runtime.groupLastActivityTime) {
+    for (const [ sessionId, lastTime ] of runtime.groupLastActivityTime) {
       const lastCheckTime = runtime.groupLastIdleCheckTime.get(sessionId) ?? 0;
       if (now - lastCheckTime < IDLE_CHECK_INTERVAL_MS) {
         continue;
@@ -226,7 +226,7 @@ function ensureIdleCheckTimer() {
         continue;
       }
 
-      const groupId = Number(sessionId.split(':')[1]);
+      const groupId = Number(sessionId.split(":")[1]);
       if (!groupId || !isGroupAllowed(groupId, cfg)) {
         continue;
       }
@@ -261,8 +261,8 @@ function ensureIdleCheckTimer() {
       const configuredBotIds =
         Array.isArray(cfg.planner.idleCheckBotIds) && cfg.planner.idleCheckBotIds.length > 0
           ? cfg.planner.idleCheckBotIds.map((item) => Number(item))
-          : [...botsInGroup];
-      const availableBotIds = [...botsInGroup].filter((botId) => configuredBotIds.includes(botId));
+          : [ ...botsInGroup ];
+      const availableBotIds = [ ...botsInGroup ].filter((botId) => configuredBotIds.includes(botId));
       if (availableBotIds.length === 0) {
         continue;
       }
@@ -278,24 +278,24 @@ function ensureIdleCheckTimer() {
         logger.info(`[crystelf-ai] idle trigger session=${sessionId}`);
 
         const history = runtime.db.getMessages(sessionId, cfg.historyCount);
-        const botNickname = cfg.nicknames[0] || '晶灵';
+        const botNickname = cfg.nicknames[0] || "晶灵";
         const plannerResult = await runtime.humanize.actionPlanner.plan(
           sessionId,
           botNickname,
           history,
-          '[Check if you want to answer the call]',
+          "[Check if you want to answer the call]",
           {
             isIdleCheck: true,
-            triggerType: 'idle',
-            rawTriggerMessage: '[Check if you want to answer the call]',
+            triggerType: "idle",
+            rawTriggerMessage: "[Check if you want to answer the call]",
           }
         );
 
         logger.info(
-          `[crystelf-ai] idle planner session=${sessionId} action=${plannerResult.action} reason=${JSON.stringify(plannerResult.reason || '')}`
+          `[crystelf-ai] idle planner session=${sessionId} action=${plannerResult.action} reason=${JSON.stringify(plannerResult.reason || "")}`
         );
 
-        if (plannerResult.action !== 'reply') {
+        if (plannerResult.action !== "reply") {
           runtime.groupMessageCount.set(sessionId, 0);
           runtime.groupMessageCountAfterBot.set(sessionId, 0);
           runtime.groupLastIdleCheckTime.set(sessionId, now);
@@ -308,9 +308,9 @@ function ensureIdleCheckTimer() {
           group_id: groupId,
         };
         const targetMessage = {
-          userName: 'system',
+          userName: "system",
           userId: 0,
-          userRole: 'member',
+          userRole: "member",
           content: "[No one in the group is talking? I'll answer!]",
           messageId: 0,
           timestamp: now,
@@ -320,7 +320,7 @@ function ensureIdleCheckTimer() {
         await runReplyFlow(idleEvent, runtime, {
           sessionId,
           targetMessage,
-          replyType: 'idle',
+          replyType: "idle",
           plannerThoughts: `You stumbled upon some message in this group and decided to reply.
 Suggestion:
 - Quote messages from group friends appropriately (using [[[reply:message ID]]] format)
@@ -342,7 +342,7 @@ Suggestion:
 }
 
 function detectResetCommand(e) {
-  return /^([#\/])?重置(对话|会话)$/.test((e.msg || '').trim());
+  return /^([#\/])?重置(对话|会话)$/.test((e.msg || "").trim());
 }
 
 function getSessionId(groupId) {
@@ -358,7 +358,7 @@ function getSenderName(e) {
 }
 
 function getSenderRole(e) {
-  return e?.sender?.role || 'member';
+  return e?.sender?.role || "member";
 }
 
 function getGroupName(e) {
@@ -392,13 +392,13 @@ function isAllowedByYunzai(e) {
 
 function canHandleAIEvent(e) {
   if (!isPluginActiveInLoader()) {
-    logger.info('[crystelf-ai] skip because Yunzai is in stopped state or plugin is unloaded');
+    logger.info("[crystelf-ai] skip because Yunzai is in stopped state or plugin is unloaded");
     return false;
   }
 
   if (!isAllowedByYunzai(e)) {
     logger.info(
-      `[crystelf-ai] skip because blocked by Yunzai global/group config group=${e.group_id || 'private'} user=${e.user_id || e.operator_id || 0}`
+      `[crystelf-ai] skip because blocked by Yunzai global/group config group=${e.group_id || "private"} user=${e.user_id || e.operator_id || 0}`
     );
     return false;
   }
@@ -408,7 +408,7 @@ function canHandleAIEvent(e) {
 
 async function getMemberName(bot, groupId, userId) {
   try {
-    const result = await bot.sendApi('get_group_member_info', {
+    const result = await bot.sendApi("get_group_member_info", {
       group_id: groupId,
       user_id: userId,
       no_cache: true,
@@ -465,7 +465,7 @@ async function detectTrigger(e, config, db) {
     logger.info(`[crystelf-ai] trigger matched quoted bot message in group=${e.group_id}`);
     return {
       shouldTrigger: true,
-      reason: 'comment',
+      reason: "comment",
       extracted,
       quotedBot,
     };
@@ -475,7 +475,7 @@ async function detectTrigger(e, config, db) {
     logger.info(`[crystelf-ai] trigger matched direct @ in group=${e.group_id}`);
     return {
       shouldTrigger: true,
-      reason: 'reply',
+      reason: "reply",
       extracted,
       quotedBot: null,
     };
@@ -485,7 +485,7 @@ async function detectTrigger(e, config, db) {
     logger.info(`[crystelf-ai] trigger matched nickname in group=${e.group_id}`);
     return {
       shouldTrigger: true,
-      reason: 'nickname',
+      reason: "nickname",
       extracted,
       quotedBot: null,
     };
@@ -493,7 +493,7 @@ async function detectTrigger(e, config, db) {
 
   return {
     shouldTrigger: false,
-    reason: '',
+    reason: "",
     extracted,
     quotedBot: null,
   };
@@ -502,16 +502,16 @@ async function detectTrigger(e, config, db) {
 async function buildTargetMessage(e, config, trigger, db) {
   const quoted = await getQuotedContent(e, db);
   const userName = getSenderName(e);
-  let content = trigger.extracted?.text || '';
+  let content = trigger.extracted?.text || "";
 
   if (quoted?.content) {
-    content = `${content ? `${content}\n` : ''}[引用消息] ${quoted.senderName}: ${quoted.content}`;
+    content = `${content ? `${content}\n` : ""}[引用消息] ${quoted.senderName}: ${quoted.content}`;
   }
   if (!content && trigger.extracted?.imageUrls?.length > 0) {
-    content = '[image]';
+    content = "[image]";
   }
   if (!content) {
-    content = '你好';
+    content = "你好";
   }
 
   return {
@@ -550,18 +550,18 @@ async function getHumanizeContexts(runtimeState, sessionId, targetMessage, histo
 
 async function saveBotMessages(runtimeState, sessionId, event, messages, groupInfo) {
   const now = Date.now();
-  const botNickname = runtimeState.config.nicknames[0] || '晶灵';
+  const botNickname = runtimeState.config.nicknames[0] || "晶灵";
   const botUin = getBotUin(event);
   const groupName = groupInfo?.groupName || getGroupName(event);
 
   for (const message of messages) {
     runtimeState.db.saveMessage({
       sessionId,
-      role: 'assistant',
+      role: "assistant",
       content: message,
       userId: botUin,
       userName: botNickname,
-      userRole: 'member',
+      userRole: "member",
       groupId: event.group_id,
       groupName,
       timestamp: now,
@@ -582,7 +582,7 @@ async function maybeProcessImages(e, runtimeState) {
 
   for (const seg of Array.isArray(e.message) ? e.message : []) {
     const imageUrl = seg?.url || seg?.data?.url;
-    if (seg?.type === 'image' && imageUrl) {
+    if (seg?.type === "image" && imageUrl) {
       processImage(
         runtimeState.ai,
         imageUrl,
@@ -599,7 +599,7 @@ function collectCooldownMessage(sessionId, e, content, isDirectAt) {
   const messages = runtime.cooldownMessages.get(sessionId) || [];
   messages.push({
     event: e,
-    content: content || '[无文本]',
+    content: content || "[无文本]",
     userName: getSenderName(e),
     userId: e.user_id,
     messageId: e.message_id,
@@ -622,7 +622,7 @@ function collectDynamicDelayMessage(sessionId, e, content) {
 
   queueData.messages.push({
     event: e,
-    content: content || '[无文本]',
+    content: content || "[无文本]",
     userName: getSenderName(e),
     userId: e.user_id,
     messageId: e.message_id,
@@ -641,7 +641,7 @@ async function runReplyFlow(event, runtimeState, options) {
     groupInfo,
   } = options;
 
-  runtimeState.sessionManager.getOrCreate(sessionId, 'group', event.group_id);
+  runtimeState.sessionManager.getOrCreate(sessionId, "group", event.group_id);
   const chatHistory =
     history || runtimeState.db.getMessages(sessionId, runtimeState.config.historyCount);
   const botRole = await getBotRole({ bot: event.bot, group_id: event.group_id });
@@ -681,7 +681,7 @@ async function runReplyFlow(event, runtimeState, options) {
       config: runtimeState.config,
       groupName: resolvedGroupInfo.groupName,
       memberCount: resolvedGroupInfo.memberCount,
-      botNickname: runtimeState.config.nicknames[0] || '晶灵',
+      botNickname: runtimeState.config.nicknames[0] || "晶灵",
       botQQ: getBotUin(event),
       botRole,
       isGroup: true,
@@ -717,7 +717,7 @@ async function runReplyFlow(event, runtimeState, options) {
 
 async function processGroupMessage(e, runtimeState, trigger, reviewPayload) {
   const sessionId = getSessionId(e.group_id);
-  const triggerType = reviewPayload ? 'review' : trigger.reason;
+  const triggerType = reviewPayload ? "review" : trigger.reason;
 
   logger.info(
     `[crystelf-ai] process start session=${sessionId} trigger=${triggerType} review=${Boolean(reviewPayload)}`
@@ -735,41 +735,41 @@ async function processGroupMessage(e, runtimeState, trigger, reviewPayload) {
       reviewPayload || (await buildTargetMessage(e, runtimeState.config, trigger, runtimeState.db));
     const history = runtimeState.db.getMessages(sessionId, runtimeState.config.historyCount);
     const messageContent = trigger.extracted?.originalText || targetMessage.content;
-    const shouldRateLimit = !reviewPayload && triggerType !== 'idle' && triggerType !== 'poked';
+    const shouldRateLimit = !reviewPayload && triggerType !== "idle" && triggerType !== "poked";
 
     let plannerResult = {
-      action: 'reply',
+      action: "reply",
       reason: `direct trigger: ${triggerType}`,
-      rawResponse: 'bypassed for direct @ trigger',
+      rawResponse: "bypassed for direct @ trigger",
     };
 
-    if (triggerType !== 'reply' && !reviewPayload) {
+    if (triggerType !== "reply" && !reviewPayload) {
       plannerResult = await runtimeState.humanize.actionPlanner.plan(
         sessionId,
-        runtimeState.config.nicknames[0] || '晶灵',
+        runtimeState.config.nicknames[0] || "晶灵",
         history,
         targetMessage.content,
         {
-          isIdleCheck: trigger.reason === 'idle',
+          isIdleCheck: trigger.reason === "idle",
           triggerType,
           rawTriggerMessage: trigger.extracted?.originalText || targetMessage.content,
         }
       );
 
       logger.info(
-        `[crystelf-ai] planner raw session=${sessionId} trigger=${triggerType} raw=${JSON.stringify(plannerResult.rawResponse || '')}`
+        `[crystelf-ai] planner raw session=${sessionId} trigger=${triggerType} raw=${JSON.stringify(plannerResult.rawResponse || "")}`
       );
       logger.info(
-        `[crystelf-ai] planner result session=${sessionId} trigger=${triggerType} action=${plannerResult.action} reason=${JSON.stringify(plannerResult.reason || '')}`
+        `[crystelf-ai] planner result session=${sessionId} trigger=${triggerType} action=${plannerResult.action} reason=${JSON.stringify(plannerResult.reason || "")}`
       );
 
-      if (plannerResult.action === 'wait' || plannerResult.action === 'complete') {
+      if (plannerResult.action === "wait" || plannerResult.action === "complete") {
         logger.info(
           `[crystelf-ai] skip reply by planner session=${sessionId} action=${plannerResult.action}`
         );
         return false;
       }
-    } else if (triggerType === 'reply') {
+    } else if (triggerType === "reply") {
       logger.info(`[crystelf-ai] bypass planner for direct @ trigger session=${sessionId}`);
     }
 
@@ -788,7 +788,7 @@ async function processGroupMessage(e, runtimeState, trigger, reviewPayload) {
     const response = await runReplyFlow(e, runtimeState, {
       sessionId,
       targetMessage,
-      replyType: reviewPayload ? 'review' : triggerType,
+      replyType: reviewPayload ? "review" : triggerType,
       plannerThoughts: plannerResult.reason,
       reviewMessages: reviewPayload?.reviewMessages,
       history,
@@ -824,10 +824,10 @@ async function processReviewMessages(sessionId, groupId, collected, selfId) {
     const mergedContents = collected.map((item) => item.content);
     const userNames = collected.map((item) => item.userName);
     const messageIds = collected.map((item) => item.messageId);
-    const mergedContent = mergedContents.join('\n---\n');
+    const mergedContent = mergedContents.join("\n---\n");
     const first = collected[0];
     const targetMessage = {
-      userName: userNames.join(', '),
+      userName: userNames.join(", "),
       userId: first.userId,
       userRole: getSenderRole(first.event),
       content: mergedContent,
@@ -847,7 +847,7 @@ async function processReviewMessages(sessionId, groupId, collected, selfId) {
     const response = await runReplyFlow(event, runtime, {
       sessionId,
       targetMessage,
-      replyType: 'review',
+      replyType: "review",
       reviewMessages: {
         contents: mergedContents,
         userNames,
@@ -876,10 +876,10 @@ async function processCooldownWithPlanner(sessionId, groupId, collected, selfId)
 
   runtime.processing.add(sessionId);
   try {
-    const mergedContent = collected.map((item) => item.content).join('\n');
+    const mergedContent = collected.map((item) => item.content).join("\n");
     const first = collected[0];
     const history = runtime.db.getMessages(sessionId, runtime.config.historyCount);
-    const botNickname = runtime.config.nicknames[0] || '晶灵';
+    const botNickname = runtime.config.nicknames[0] || "晶灵";
 
     const plannerResult = await runtime.humanize.actionPlanner.plan(
       sessionId,
@@ -887,16 +887,16 @@ async function processCooldownWithPlanner(sessionId, groupId, collected, selfId)
       history,
       mergedContent,
       {
-        triggerType: 'comment',
+        triggerType: "comment",
         rawTriggerMessage: mergedContent,
       }
     );
 
     logger.info(
-      `[crystelf-ai] cooldown planner session=${sessionId} action=${plannerResult.action} reason=${JSON.stringify(plannerResult.reason || '')}`
+      `[crystelf-ai] cooldown planner session=${sessionId} action=${plannerResult.action} reason=${JSON.stringify(plannerResult.reason || "")}`
     );
 
-    if (plannerResult.action !== 'reply') {
+    if (plannerResult.action !== "reply") {
       return;
     }
 
@@ -921,7 +921,7 @@ async function processCooldownWithPlanner(sessionId, groupId, collected, selfId)
     const response = await runReplyFlow(event, runtime, {
       sessionId,
       targetMessage,
-      replyType: 'comment',
+      replyType: "comment",
       plannerThoughts: `After you spoke, the following messages were sent in the group. Use this context to respond naturally.\nPlanned reason: ${plannerResult.reason}`,
       reviewMessages: {
         contents: collected.map((item) => item.content),
@@ -965,10 +965,10 @@ async function processDynamicDelayQueue(sessionId, groupId, selfId) {
     const messageIds = messages.map((item) => item.messageId);
     const first = messages[0];
     const targetMessage = {
-      userName: userNames.join(', '),
+      userName: userNames.join(", "),
       userId: first.userId,
       userRole: getSenderRole(first.event),
-      content: mergedContents.join('\n---\n'),
+      content: mergedContents.join("\n---\n"),
       messageId: first.messageId,
       timestamp: Date.now(),
       imageUrls: [],
@@ -989,7 +989,7 @@ async function processDynamicDelayQueue(sessionId, groupId, selfId) {
     const response = await runReplyFlow(event, runtime, {
       sessionId,
       targetMessage,
-      replyType: 'review',
+      replyType: "review",
       reviewMessages: {
         contents: mergedContents,
         userNames,
@@ -1081,7 +1081,7 @@ function startCooldownTimer(sessionId, groupId, selfId) {
 }
 
 async function getQueuedContent(item, runtimeState) {
-  if (item.triggerReason === 'poked') {
+  if (item.triggerReason === "poked") {
     const senderId = item.event.user_id || item.event.operator_id;
     const senderName = await getMemberName(item.event.bot, item.event.group_id, senderId);
     return `[${senderName} poked you]`;
@@ -1094,7 +1094,7 @@ async function getQueuedContent(item, runtimeState) {
     runtimeState.db
   );
 
-  return extracted.text || (extracted.imageUrls.length > 0 ? '[image]' : '');
+  return extracted.text || (extracted.imageUrls.length > 0 ? "[image]" : "");
 }
 
 async function processQueuedMessages(sessionId) {
@@ -1132,7 +1132,7 @@ async function processQueuedMessages(sessionId) {
       userName: getSenderName(first),
       userId: first.user_id || first.operator_id || 0,
       userRole: getSenderRole(first),
-      content: queuedContents.map((item) => item.content).join('\n'),
+      content: queuedContents.map((item) => item.content).join("\n"),
       messageId: first.message_id,
       timestamp: Date.now(),
       imageUrls: [],
@@ -1146,9 +1146,9 @@ async function processQueuedMessages(sessionId) {
       group_name: getGroupName(first),
     };
 
-    const replyType = queuedContents.every((entry) => entry.item.triggerReason === 'poked')
-      ? 'poked'
-      : 'comment';
+    const replyType = queuedContents.every((entry) => entry.item.triggerReason === "poked")
+      ? "poked"
+      : "comment";
 
     const response = await runReplyFlow(event, runtime, {
       sessionId,
@@ -1170,7 +1170,7 @@ async function processQueuedMessages(sessionId) {
 
 async function onGroupMessage(e) {
   const runtimeState = await ensureRuntime();
-  const appConfig = ConfigControl.get('config') || {};
+  const appConfig = ConfigControl.get("config") || {};
   if (!appConfig.ai) {
     return;
   }
@@ -1199,12 +1199,12 @@ async function onGroupMessage(e) {
     runtimeState.config,
     {
       extracted: trigger.extracted,
-      reason: trigger.reason || 'observe',
+      reason: trigger.reason || "observe",
     },
     runtimeState.db
   )
     .then((item) => item.content)
-    .catch(() => trigger.extracted?.text || '');
+    .catch(() => trigger.extracted?.text || "");
 
   saveIncomingMessage(e, sessionId, storedText, runtimeState);
   await maybeProcessImages(e, runtimeState);
@@ -1229,7 +1229,7 @@ async function onGroupMessage(e) {
 
   const delayQueue = runtimeState.dynamicDelayQueues.get(sessionId);
   if (delayQueue && Date.now() < delayQueue.delayUntil) {
-    if (trigger.reason === 'reply') {
+    if (trigger.reason === "reply") {
       runtimeState.rateLimiter.recordInteraction(e.group_id, e.user_id);
       collectDynamicDelayMessage(
         sessionId,
@@ -1251,12 +1251,12 @@ async function onGroupMessage(e) {
     return;
   }
 
-  if (trigger.reason === 'reply' && runtimeState.config.dynamicDelay?.enabled) {
+  if (trigger.reason === "reply" && runtimeState.config.dynamicDelay?.enabled) {
     if (
       !runtimeState.rateLimiter.canProcess(
         e.user_id,
         e.group_id,
-        trigger.extracted?.originalText || storedText || trigger.extracted?.text || ''
+        trigger.extracted?.originalText || storedText || trigger.extracted?.text || ""
       )
     ) {
       logger.info(`[crystelf-ai] rate limited direct @ session=${sessionId} user=${e.user_id}`);
@@ -1267,7 +1267,7 @@ async function onGroupMessage(e) {
     const delayInfo = runtimeState.rateLimiter.getDelayInfo(e.group_id);
     if (delayInfo.shouldDelay) {
       const content =
-        trigger.extracted?.originalText || storedText || trigger.extracted?.text || '[无文本]';
+        trigger.extracted?.originalText || storedText || trigger.extracted?.text || "[无文本]";
       runtimeState.rateLimiter.record(e.user_id, e.group_id, content);
       collectDynamicDelayMessage(sessionId, e, content);
       startDynamicDelayTimer(sessionId, e.group_id, delayInfo.delayMs, getBotUin(e));
@@ -1280,7 +1280,7 @@ async function onGroupMessage(e) {
 
 async function onGroupPoke(e) {
   const runtimeState = await ensureRuntime();
-  const appConfig = ConfigControl.get('config') || {};
+  const appConfig = ConfigControl.get("config") || {};
   if (!appConfig.ai) {
     return;
   }
@@ -1304,20 +1304,20 @@ async function onGroupPoke(e) {
 
   const sessionId = getSessionId(e.group_id);
   if (runtimeState.processing.has(sessionId)) {
-    runtimeState.queueManager.enqueue(sessionId, e, 'poked');
+    runtimeState.queueManager.enqueue(sessionId, e, "poked");
     logger.info(`[crystelf-ai] poke queued session=${sessionId}`);
     return;
   }
 
   runtimeState.processing.add(sessionId);
   try {
-    runtimeState.sessionManager.getOrCreate(sessionId, 'group', e.group_id);
+    runtimeState.sessionManager.getOrCreate(sessionId, "group", e.group_id);
     const senderId = e.user_id || e.operator_id;
     const senderName = await getMemberName(e.bot, e.group_id, senderId);
     const targetMessage = {
       userName: senderName,
       userId: senderId,
-      userRole: 'member',
+      userRole: "member",
       content: `[${senderName} poked you]`,
       messageId: 0,
       timestamp: Date.now(),
@@ -1327,7 +1327,7 @@ async function onGroupPoke(e) {
     const response = await runReplyFlow(e, runtimeState, {
       sessionId,
       targetMessage,
-      replyType: 'poked',
+      replyType: "poked",
     });
 
     if (response.sent) {
@@ -1344,14 +1344,14 @@ async function onGroupPoke(e) {
 export class crystelfAI extends plugin {
   constructor() {
     super({
-      name: 'crystelfAI',
-      dsc: '晶灵智能',
-      event: 'message.group',
+      name: "crystelfAI",
+      dsc: "晶灵智能",
+      event: "message.group",
       priority: -1111,
       rule: [
         {
-          reg: '^(#|/)?重置(对话|会话)$',
-          fnc: 'clearChatHistory',
+          reg: "^(#|/)?重置(对话|会话)$",
+          fnc: "clearChatHistory",
         },
       ],
     });
@@ -1360,20 +1360,20 @@ export class crystelfAI extends plugin {
   async clearChatHistory(e) {
     const runtimeState = await ensureRuntime();
     const sessionId = getSessionId(e.group_id);
-    runtimeState.sessionManager.getOrCreate(sessionId, 'group', e.group_id);
+    runtimeState.sessionManager.getOrCreate(sessionId, "group", e.group_id);
     runtimeState.db.deleteSessionMessages(sessionId);
     runtimeState.db.deleteBotMessages(sessionId);
     runtimeState.cooldownUntil.delete(sessionId);
     runtimeState.cooldownMessages.delete(sessionId);
     clearCooldownTimer(sessionId);
-    return e.reply('当前群会话已重置，聊天上下文清空了。', true);
+    return e.reply("当前群会话已重置，聊天上下文清空了。", true);
   }
 }
 
-Bot.on('message.group', async (e) => {
+Bot.on("message.group", async(e) => {
   await onGroupMessage(e);
 });
 
-Bot.on('notice.group.poke', async (e) => {
+Bot.on("notice.group.poke", async(e) => {
   await onGroupPoke(e);
 });
