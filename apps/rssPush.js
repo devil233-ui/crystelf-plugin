@@ -22,31 +22,39 @@ export default class rssPush extends plugin {
             ],
         });
 
-        // 初始化确保 temp/rss 目录存在
-        this.rssTempDir = path.join(process.cwd(), "temp", "rss");
+        // this._pluginPath = path.join(process.cwd(), "plugins", "crystelf");
+
+        // 初始化确保temp目录存在
+        this.rssTempDir = path.join(process.cwd(), "temp", "v", "rss");
         if (!fs.existsSync(this.rssTempDir)) {
             fs.mkdirSync(this.rssTempDir, { recursive: true });
         }
 
-        // --- 【新增】黑名单配置文件初始化 ---
-        this.blacklistDir = path.join(process.cwd(), "data", "crystelf");
-        this.blacklistPath = path.join(this.blacklistDir, "rssBlacklist.json");
+        this.filterDir = path.join(process.cwd(), "data", "crystelf");
+        this.filterPath = path.join(this.filterDir, "rssFilter.json");
 
-        if (!fs.existsSync(this.blacklistDir)) {
-            fs.mkdirSync(this.blacklistDir, { recursive: true });
+        if (!fs.existsSync(this.filterDir)) {
+            fs.mkdirSync(this.filterDir, { recursive: true });
         }
 
-        // 如果配置文件不存在，自动生成一份默认模板
-        if (!fs.existsSync(this.blacklistPath)) {
-            const defaultBlacklist = [
+        // 如果配置文件不存在，自动生成一份包含黑白名单双模式的模板
+        if (!fs.existsSync(this.filterPath)) {
+            const defaultFilter = [
                 {
-                    link: "miyoushe.com/sr", // 留空则代表全局生效，不论哪个链接只要命中关键词就杀
-                    keywords: [ "建议体验" ]
+                    "link": "miyoushe.com/sr",
+                    "mode": "blacklist", // 黑名单模式：包含关键词就杀
+                    "keywords": [ "鸣潮", "鸣潮先约", "问卷调查" ]
+                },
+                {
+                    "link": "miyoushe.com/zzz",
+                    "mode": "whitelist", // 白名单模式：【必须】包含关键词才放行
+                    "keywords": [ "" ]
                 }
             ];
-            fs.writeFileSync(this.blacklistPath, JSON.stringify(defaultBlacklist, null, 2), "utf-8");
-            logger.mark(`[rssPush] 已生成默认黑名单配置文件: ${this.blacklistPath}`);
+            fs.writeFileSync(this.filterPath, JSON.stringify(defaultFilter, null, 2), "utf-8");
+            if (global.logger) global.logger.mark(`[rssPush] 已生成综合过滤配置文件: ${this.filterPath}`);
         }
+        // ------------------------------------
 
         const cronRule = "1/5 * * * *";
         if (!global.__rss_job_scheduled) {
@@ -125,39 +133,47 @@ export default class rssPush extends plugin {
         return await rssTools.fetchFeed(url);
     }
 
-    // --- 黑名单过滤逻辑 (外部配置版) ---
-    isBlacklisted(post) {
-        let blacklistRules = [];
+    // --- 综合过滤逻辑 (支持精准锁定订阅源) ---
+    isFiltered(post, feedUrl = "") {
+        let filterRules = [];
         try {
-            // 动态读取配置文件，即改即生效
-            if (fs.existsSync(this.blacklistPath)) {
-                blacklistRules = JSON.parse(fs.readFileSync(this.blacklistPath, "utf-8"));
+            if (fs.existsSync(this.filterPath)) {
+                filterRules = JSON.parse(fs.readFileSync(this.filterPath, "utf-8"));
             }
         } catch (e) {
-            if (global.logger) global.logger.error(`[RSS黑名单] 读取配置失败: ${e.message}`);
-            return false; // 读取失败则默认放行
-        }
-
-        if (!Array.isArray(blacklistRules)) {
-            blacklistRules = [];
+            if (global.logger) global.logger.error(`[RSS过滤] 读取配置失败: ${e.message}`);
+            return false;
         }
 
         const postLink = (post.link || "").toLowerCase();
         const titleAndContent = ((post.title || "") + (post.content || "")).toLowerCase();
+        const currentSource = feedUrl.toLowerCase();
 
-        for (const rule of blacklistRules) {
+        for (const rule of filterRules) {
             const targetLink = (rule.link || "").toLowerCase();
+            const targetSource = (rule.source || "").toLowerCase(); // 新增：订阅源匹配特征
 
-            // 校验 1：如果规则指定了链接特征，但不匹配，直接跳过
+            // 校验 1：如果规则限制了文章链接特征，且不匹配，则跳过
             if (targetLink && !postLink.includes(targetLink)) continue;
 
-            // 校验 2：确保 keywords 是数组，且包含了黑名单词汇
-            if (Array.isArray(rule.keywords) && rule.keywords.some(kw => titleAndContent.includes(kw.toLowerCase()))) {
-                if (global.logger) global.logger.mark(`[RSS拦截] 触发黑名单双重校验: 链接[${postLink}] 包含了关键词`);
-                return true; // 拦截！
+            // 校验 2：如果规则限制了订阅源特征，且当前拉取的源不匹配，则跳过
+            if (targetSource && !currentSource.includes(targetSource)) continue;
+
+            // 校验 3：关键词检测
+            const hasKeyword = Array.isArray(rule.keywords) && rule.keywords.some(kw => titleAndContent.includes(kw.toLowerCase()));
+
+            if (rule.mode === "blacklist" && hasKeyword) {
+                if (global.logger) global.logger.mark(`[RSS拦截] 触发黑名单: 源[${targetSource}] 文章[${postLink}]`);
+                return true;
+            }
+
+            if (rule.mode === "whitelist" && !hasKeyword) {
+                if (global.logger) global.logger.mark(`[RSS拦截] 未命中白名单: 源[${targetSource}] 文章[${postLink}]`);
+                return true;
             }
         }
-        return false; // 安全放行
+
+        return false;
     }
 
     async pullFeedNow(e) {
@@ -174,7 +190,7 @@ export default class rssPush extends plugin {
         if (!latest?.length) return e.reply("无内容");
 
         // 从最新文章中找到第一篇没有触发黑名单的
-        const post = latest.find(p => !this.isBlacklisted(p));
+        const post = latest.find(p => !this.isFiltered(p, url));
         if (!post) return e.reply("最新文章均触发黑名单，已被拦截。", false, { recallMsg: 60 });
 
         const safeId = this.getSafeFilename(post.link);
@@ -221,7 +237,7 @@ export default class rssPush extends plugin {
                     const pubDate = latest[i].date ? new Date(latest[i].date).getTime() : Date.now();
                     if (Date.now() - pubDate < 86400000) {
                         // 通过黑名单检测才允许推入发送队列
-                        if (!this.isBlacklisted(latest[i])) {
+                        if (!this.isFiltered(latest[i], feed.url)) {
                             newItems.push(latest[i]);
                         }
                     }
