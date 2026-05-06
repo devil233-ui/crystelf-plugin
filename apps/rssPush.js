@@ -201,8 +201,18 @@ export default class rssPush extends plugin {
         if (desc.startsWith(cleanTitle)) desc = desc.substring(cleanTitle.length).trim();
         const msgBody = `[RSS预览] ${cleanTitle}\n${desc ? desc + "\n" : ""}${post.link}\n${this.formatDate(post.date)}`;
 
+        let msgToSend = msgBody;
+        if (desc.length > 800) {
+            const forwardNode = [ { message: msgBody, nickname: Bot.nickname, user_id: Bot.uin } ];
+            try {
+                msgToSend = e.isGroup ? await e.group.makeForwardMsg(forwardNode) : await e.friend.makeForwardMsg(forwardNode);
+            } catch (err) {
+                if (global.logger) global.logger.error("[RSS预览] 制作转发消息失败", err);
+            }
+        }
+
         try {
-            await e.reply(msgBody);
+            await e.reply(msgToSend);
             if (desc || post.content?.includes("<img") || post.image) {
                 // 60秒自动撤回提示语
                 await e.reply("正在生成截图...", false, { recallMsg: 60 });
@@ -259,7 +269,17 @@ export default class rssPush extends plugin {
                     const group = Bot.pickGroup(groupId);
                     if (!group) continue;
 
-                    await group.sendMsg(msgBody);
+                    let msgToSend = msgBody;
+                    if (desc.length > 800) {
+                        const forwardNode = [ { message: msgBody, nickname: Bot.nickname, user_id: Bot.uin } ];
+                        try {
+                            msgToSend = await group.makeForwardMsg(forwardNode);
+                        } catch (err) {
+                            if (global.logger) global.logger.error("[RSS推送] 制作转发消息失败", err);
+                        }
+                    }
+
+                    await group.sendMsg(msgToSend);
 
                     if (feed.screenshot && (desc || post.content?.includes("<img") || post.image)) {
                         const safeId = this.getSafeFilename(post.link);
