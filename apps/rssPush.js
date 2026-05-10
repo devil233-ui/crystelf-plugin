@@ -109,10 +109,58 @@ export default class rssPush extends plugin {
 
             // 将 JSON 映射为标准的 RSS 对象格式
             return data.data.list.map(item => {
-                let htmlContent = `<p>${(item.post.content || "").replace(/\n/g, "<br>")}</p>`;
-                if (item.post.images && item.post.images.length > 0) {
-                    htmlContent += item.post.images.map(img => `<img src="${img}">`).join("");
+                let htmlContent = "";
+
+                // 优先尝试解析 structured_content (米游社长文专属的高级排版结构)
+                if (item.post.structured_content) {
+                    try {
+                        const structData = JSON.parse(item.post.structured_content);
+                        structData.forEach(block => {
+                            // 1. 处理纯文本与行内样式 (加粗、变色)
+                            if (typeof block.insert === "string") {
+                                let text = block.insert.replace(/\n/g, "<br>");
+                                if (block.attributes) {
+                                    if (block.attributes.color) text = `<span style="color:${block.attributes.color}">${text}</span>`;
+                                    if (block.attributes.bold) text = `<strong>${text}</strong>`;
+                                }
+                                htmlContent += text;
+                            } 
+                            // 2. 处理多媒体与功能卡片
+                            else if (typeof block.insert === "object") {
+                                if (block.insert.image) {
+                                    htmlContent += `<img src="${block.insert.image}">`; // 去掉硬编码的 <br>
+                                } else if (block.insert.divider) {
+                                    htmlContent += `<hr>`;
+                                } else if (block.insert.link_card) {
+                                    htmlContent += `<br><strong>[链接卡片: ${block.insert.link_card.title}]</strong><br>`;
+                                } else if (block.insert.backup_text) {
+                                    // 处理某些折叠或特殊模块的备用文本
+                                    htmlContent += `<br><span>${block.insert.backup_text.replace(/\n/g, "<br>")}</span><br>`;
+                                }
+                            }
+                        });
+                    } catch (e) {
+                        if (global.logger) global.logger.error("[RSS解析] structured_content 序列化失败", e);
+                    }
                 }
+
+                // 如果没拿到结构化数据（说明只是发了个普通的带图短动态说说），则走回退逻辑
+                if (!htmlContent.trim()) {
+                    htmlContent = `<p>${(item.post.content || "").replace(/\n/g, "<br>")}</p>`;
+                    if (item.post.images && item.post.images.length > 0) {
+                        htmlContent += item.post.images.map(img => `<img src="${img}">`).join("");
+                    }
+                }
+
+                // 【新增】全局清理逻辑：将混杂了空格、全角空格(\xA0)的多个连续换行，合并为单个换行
+                htmlContent = htmlContent.replace(/(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*){2,}/gi, "<br>");
+                // 顺手去掉开头和结尾可能多出来的换行符
+                htmlContent = htmlContent.replace(/^(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+|(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+$/gi, "");
+                
+                // 【再新增】无情狙杀图片前后的多余换行 (利用 CSS block 自身的 margin 即可排版)
+                htmlContent = htmlContent.replace(/(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+(<img[^>]+>)/gi, "$1");
+                htmlContent = htmlContent.replace(/(<img[^>]+>)(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+/gi, "$1");
+                
                 // 匹配对应的游戏版区
                 const gameMap = { 1: "bh3", 2: "ys", 6: "sr", 8: "zzz" };
                 const prefix = gameMap[item.post.game_id] || "ys";
@@ -121,7 +169,7 @@ export default class rssPush extends plugin {
                     title: item.post.subject,
                     author: item.user?.nickname || "米游社用户",
                     link: `https://www.miyoushe.com/${prefix}/article/${item.post.post_id}`,
-                    date: item.post.created_at * 1000, // 转为毫秒
+                    date: item.post.created_at * 1000, 
                     content: htmlContent,
                     image: item.post.cover || (item.post.images ? item.post.images[0] : ""),
                     feedTitle: `${item.user?.nickname || "用户"} 的米游社动态`
@@ -181,8 +229,8 @@ export default class rssPush extends plugin {
         if (!url) return e.reply("请提供链接");
         let latest;
         try {
-            // 60秒自动撤回提示语
-            await e.reply("正在解析...", false, { recallMsg: 60 });
+            // 自动撤回提示语
+            await e.reply("正在解析...", false, { recallMsg: 600 });
             latest = await this.getFeedData(url);
         } catch (err) {
             return e.reply(`失败: ${err.message}`);
@@ -211,19 +259,25 @@ export default class rssPush extends plugin {
             }
         }
 
+        let resPaths = [];
         try {
             await e.reply(msgToSend);
             if (desc || post.content?.includes("<img") || post.image) {
-                // 60秒自动撤回提示语
-                await e.reply("正在生成截图...", false, { recallMsg: 60 });
-                const resPath = await screenshot.generateScreenshot(post, tempPath);
-                if (resPath && fs.existsSync(resPath)) {
-                    await e.reply(segment.image(resPath));
+                // 自动撤回提示语
+                await e.reply("正在生成截图...", false, { recallMsg: 600 });
+                resPaths = await screenshot.generateScreenshot(post, tempPath);
+                if (resPaths && resPaths.length > 0) {
+                    for (const p of resPaths) {
+                        if (fs.existsSync(p)) await e.reply(segment.image(p));
+                    }
                 }
             }
         } catch (err) {
             e.reply("生成截图预览失败");
         } finally {
+            if (resPaths && resPaths.length > 0) {
+                resPaths.forEach(p => { if (fs.existsSync(p)) fs.unlinkSync(p); });
+            }
             if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
         }
     }
@@ -285,14 +339,20 @@ export default class rssPush extends plugin {
                         const safeId = this.getSafeFilename(post.link);
                         const tempPath = path.join(this.rssTempDir, `${safeId}_${groupId}.jpg`);
 
+                        let resPaths = [];
                         try {
-                            const resPath = await screenshot.generateScreenshot(post, tempPath);
-                            if (resPath && fs.existsSync(resPath)) {
-                                await group.sendMsg(segment.image(resPath));
+                            resPaths = await screenshot.generateScreenshot(post, tempPath);
+                            if (resPaths && resPaths.length > 0) {
+                                for (const p of resPaths) {
+                                    if (fs.existsSync(p)) await group.sendMsg(segment.image(p));
+                                }
                             }
                         } catch (e) {
                             // 忽略发送错误
                         } finally {
+                            if (resPaths && resPaths.length > 0) {
+                                resPaths.forEach(p => { if (fs.existsSync(p)) fs.unlinkSync(p); });
+                            }
                             if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
                         }
                     }
