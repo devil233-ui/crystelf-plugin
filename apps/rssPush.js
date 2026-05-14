@@ -130,7 +130,7 @@ export default class rssPush extends plugin {
                                 if (block.insert.image) {
                                     htmlContent += `<img src="${block.insert.image}">`; // 去掉硬编码的 <br>
                                 } else if (block.insert.divider) {
-                                    htmlContent += `<hr>`;
+                                    htmlContent += "<hr>";
                                 } else if (block.insert.link_card) {
                                     htmlContent += `<br><strong>[链接卡片: ${block.insert.link_card.title}]</strong><br>`;
                                 } else if (block.insert.backup_text) {
@@ -181,7 +181,7 @@ export default class rssPush extends plugin {
         return await rssTools.fetchFeed(url);
     }
 
-    // --- 综合过滤逻辑 (支持精准锁定订阅源) ---
+    // --- 综合过滤逻辑 (黑白双修，黑名单绝对优先级) ---
     isFiltered(post, feedUrl = "") {
         let filterRules = [];
         try {
@@ -197,30 +197,48 @@ export default class rssPush extends plugin {
         const titleAndContent = ((post.title || "") + (post.content || "")).toLowerCase();
         const currentSource = feedUrl.toLowerCase();
 
-        for (const rule of filterRules) {
+        // 1. 筛选出针对当前文章和源【生效的所有规则】
+        const applicableRules = filterRules.filter(rule => {
             const targetLink = (rule.link || "").toLowerCase();
-            const targetSource = (rule.source || "").toLowerCase(); // 新增：订阅源匹配特征
+            const targetSource = (rule.source || "").toLowerCase();
+            if (targetLink && !postLink.includes(targetLink)) return false;
+            if (targetSource && !currentSource.includes(targetSource)) return false;
+            return true;
+        });
 
-            // 校验 1：如果规则限制了文章链接特征，且不匹配，则跳过
-            if (targetLink && !postLink.includes(targetLink)) continue;
+        // 如果没有任何规则适用于当前文章，直接安全放行
+        if (applicableRules.length === 0) return false; 
 
-            // 校验 2：如果规则限制了订阅源特征，且当前拉取的源不匹配，则跳过
-            if (targetSource && !currentSource.includes(targetSource)) continue;
+        // 分离黑白名单
+        const blacklists = applicableRules.filter(r => r.mode === "blacklist");
+        const whitelists = applicableRules.filter(r => r.mode === "whitelist");
 
-            // 校验 3：关键词检测
-            const hasKeyword = Array.isArray(rule.keywords) && rule.keywords.some(kw => titleAndContent.includes(kw.toLowerCase()));
-
-            if (rule.mode === "blacklist" && hasKeyword) {
-                if (global.logger) global.logger.mark(`[RSS拦截] 触发黑名单: 源[${targetSource}] 文章[${postLink}]`);
-                return true;
-            }
-
-            if (rule.mode === "whitelist" && !hasKeyword) {
-                if (global.logger) global.logger.mark(`[RSS拦截] 未命中白名单: 源[${targetSource}] 文章[${postLink}]`);
-                return true;
+        // 2. 黑名单判定（最高优先级：一票否决）
+        // 只要触发任意一条黑名单规则中的任意一个关键词，直接击杀
+        for (const rule of blacklists) {
+            if (Array.isArray(rule.keywords) && rule.keywords.some(kw => kw && titleAndContent.includes(kw.toLowerCase()))) {
+                if (global.logger) global.logger.mark(`[RSS拦截] 触发黑名单: 源[${rule.source || "全局"}] 文章[${postLink}]`);
+                return true; 
             }
         }
 
+        // 3. 白名单判定（准入机制）
+        // 只有当该源配置了白名单时，才进行严格校验；如果没有配置白名单，则黑名单没踩雷就直接放行
+        if (whitelists.length > 0) {
+            let passedWhite = false;
+            for (const rule of whitelists) {
+                if (Array.isArray(rule.keywords) && rule.keywords.some(kw => kw && titleAndContent.includes(kw.toLowerCase()))) {
+                    passedWhite = true; // 只要命中任意一个白名单规则的任意关键词，就拿到通行证
+                    break;
+                }
+            }
+            if (!passedWhite) {
+                if (global.logger) global.logger.mark(`[RSS拦截] 未命中任何白名单: 源[${currentSource}] 文章[${postLink}]`);
+                return true; // 拦截：因为有白名单门禁，但没刷上卡
+            }
+        }
+
+        // 既没踩雷（黑），又过了门禁（白）/或无门禁限制，安全放行
         return false;
     }
 
