@@ -257,7 +257,7 @@ export default class rssPush extends plugin {
 
         // 从最新文章中找到第一篇没有触发黑名单的
         const post = latest.find(p => !this.isFiltered(p, url));
-        if (!post) return e.reply("最新文章均触发黑名单，已被拦截。", false, { recallMsg: 60 });
+        if (!post) return e.reply("最新文章均触发黑名单，已被拦截。", false, { recallMsg: 600 });
 
         const safeId = this.getSafeFilename(post.link);
         const tempPath = path.join(this.rssTempDir, `${safeId}_preview.jpg`);
@@ -330,11 +330,13 @@ export default class rssPush extends plugin {
             newItems.reverse();
 
             for (const post of newItems) {
-                await rssCache.set("global_dedupe", post.link);
+                
                 const cleanTitle = post.title.trim();
                 let desc = this.formatContent(post.content);
                 if (desc.startsWith(cleanTitle)) desc = desc.substring(cleanTitle.length).trim();
                 const msgBody = `[RSS推送] ${cleanTitle}\n${desc ? desc + "\n" : ""}${post.link}\n${this.formatDate(post.date)}`;
+
+                let pushSuccess = false; // 【新增】标记变量：是否至少成功推送到了一个群
 
                 for (const groupId of feed.targetGroups) {
                     await tools.sleep(2000);
@@ -351,7 +353,13 @@ export default class rssPush extends plugin {
                         }
                     }
 
-                    await group.sendMsg(msgToSend);
+                    try {
+                        await group.sendMsg(msgToSend);
+                        pushSuccess = true; // 只要代码执行到这里没报错，说明发成功了！
+                    } catch (err) {
+                        if (global.logger) global.logger.error(`[RSS推送] 群 ${groupId} 发送文本失败:`, err);
+                        continue; // 文本都没发出去，后面的截图也不用发了，直接跳过当前群
+                    }
 
                     if (feed.screenshot && (desc || post.content?.includes("<img") || post.image)) {
                         const safeId = this.getSafeFilename(post.link);
@@ -374,6 +382,12 @@ export default class rssPush extends plugin {
                             if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
                         }
                     }
+                }
+
+                if (pushSuccess) {
+                    await rssCache.set("global_dedupe", post.link);
+                } else {
+                    if (global.logger) global.logger.warn(`[RSS推送] 致命失败：文章未成功推送到任何群聊，保留至下次重试 [${post.link}]`);
                 }
             }
         }
