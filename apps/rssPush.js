@@ -124,7 +124,7 @@ export default class rssPush extends plugin {
                                     if (block.attributes.bold) text = `<strong>${text}</strong>`;
                                 }
                                 htmlContent += text;
-                            } 
+                            }
                             // 2. 处理多媒体与功能卡片
                             else if (typeof block.insert === "object") {
                                 if (block.insert.image) {
@@ -156,11 +156,11 @@ export default class rssPush extends plugin {
                 htmlContent = htmlContent.replace(/(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*){2,}/gi, "<br>");
                 // 顺手去掉开头和结尾可能多出来的换行符
                 htmlContent = htmlContent.replace(/^(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+|(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+$/gi, "");
-                
+
                 // 【再新增】无情狙杀图片前后的多余换行 (利用 CSS block 自身的 margin 即可排版)
                 htmlContent = htmlContent.replace(/(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+(<img[^>]+>)/gi, "$1");
                 htmlContent = htmlContent.replace(/(<img[^>]+>)(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+/gi, "$1");
-                
+
                 // 匹配对应的游戏版区
                 const gameMap = { 1: "bh3", 2: "ys", 6: "sr", 8: "zzz" };
                 const prefix = gameMap[item.post.game_id] || "ys";
@@ -169,7 +169,7 @@ export default class rssPush extends plugin {
                     title: item.post.subject,
                     author: item.user?.nickname || "米游社用户",
                     link: `https://www.miyoushe.com/${prefix}/article/${item.post.post_id}`,
-                    date: item.post.created_at * 1000, 
+                    date: item.post.created_at * 1000,
                     content: htmlContent,
                     image: item.post.cover || (item.post.images ? item.post.images[0] : ""),
                     feedTitle: `${item.user?.nickname || "用户"} 的米游社动态`
@@ -207,7 +207,7 @@ export default class rssPush extends plugin {
         });
 
         // 如果没有任何规则适用于当前文章，直接安全放行
-        if (applicableRules.length === 0) return false; 
+        if (applicableRules.length === 0) return false;
 
         // 分离黑白名单
         const blacklists = applicableRules.filter(r => r.mode === "blacklist");
@@ -218,7 +218,7 @@ export default class rssPush extends plugin {
         for (const rule of blacklists) {
             if (Array.isArray(rule.keywords) && rule.keywords.some(kw => kw && titleAndContent.includes(kw.toLowerCase()))) {
                 if (global.logger) global.logger.mark(`[RSS拦截] 触发黑名单: 源[${rule.source || "全局"}] 文章[${postLink}]`);
-                return true; 
+                return true;
             }
         }
 
@@ -273,7 +273,9 @@ export default class rssPush extends plugin {
             try {
                 msgToSend = e.isGroup ? await e.group.makeForwardMsg(forwardNode) : await e.friend.makeForwardMsg(forwardNode);
             } catch (err) {
-                if (global.logger) global.logger.error("[RSS预览] 制作转发消息失败", err);
+                if (global.logger) global.logger.error("[RSS预览] 制作转发消息失败，降级为截断文本", err);
+                // 【核心修复】转发失败时强制截断，防止超长文本导致底层 NTQQ 崩溃
+                msgToSend = `[RSS预览] ${cleanTitle}\n${desc.substring(0, 500)}...\n(正文过长，请点击下方链接查看完整内容)\n${post.link}\n${this.formatDate(post.date)}`;
             }
         }
 
@@ -330,7 +332,7 @@ export default class rssPush extends plugin {
             newItems.reverse();
 
             for (const post of newItems) {
-                
+
                 const cleanTitle = post.title.trim();
                 let desc = this.formatContent(post.content);
                 if (desc.startsWith(cleanTitle)) desc = desc.substring(cleanTitle.length).trim();
@@ -347,9 +349,18 @@ export default class rssPush extends plugin {
                     if (desc.length > 800) {
                         const forwardNode = [ { message: msgBody, nickname: Bot.nickname, user_id: Bot.uin } ];
                         try {
-                            msgToSend = await group.makeForwardMsg(forwardNode);
+                            // 兼容不同适配器的 API (TRSSYz / NapCat 适配)
+                            if (typeof group.makeForwardMsg === "function") {
+                                msgToSend = await group.makeForwardMsg(forwardNode);
+                            } else if (typeof Bot.makeForwardMsg === "function") {
+                                msgToSend = await Bot.makeForwardMsg(forwardNode);
+                            } else {
+                                throw new Error("当前适配器不支持在定时任务中调用合并转发API");
+                            }
                         } catch (err) {
-                            if (global.logger) global.logger.error("[RSS推送] 制作转发消息失败", err);
+                            if (global.logger) global.logger.error("[RSS推送] 制作转发消息失败，降级为截断文本", err);
+                            // 【核心修复】转发失败时强制截断，防止超长文本导致底层 NTQQ 崩溃
+                            msgToSend = `[RSS推送] ${cleanTitle}\n${desc.substring(0, 500)}...\n(正文过长，请点击下方链接查看完整内容)\n${post.link}\n${this.formatDate(post.date)}`;
                         }
                     }
 
