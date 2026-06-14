@@ -43,12 +43,12 @@ export default class rssPush extends plugin {
                 {
                     "link": "miyoushe.com/sr",
                     "mode": "blacklist", // 黑名单模式：包含关键词就杀
-                    "keywords": [ "鸣潮", "鸣潮先约", "问卷调查" ]
+                    "keywords": ["鸣潮", "鸣潮先约", "问卷调查"]
                 },
                 {
                     "link": "miyoushe.com/zzz",
                     "mode": "whitelist", // 白名单模式：【必须】包含关键词才放行
-                    "keywords": [ "" ]
+                    "keywords": [""]
                 }
             ];
             fs.writeFileSync(this.filterPath, JSON.stringify(defaultFilter, null, 2), "utf-8");
@@ -144,13 +144,30 @@ export default class rssPush extends plugin {
                     }
                 }
 
-                // 如果没拿到结构化数据（说明只是发了个普通的带图短动态说说），则走回退逻辑
+                // 如果没拿到结构化数据，则走文本回退逻辑
                 if (!htmlContent.trim()) {
                     htmlContent = `<p>${(item.post.content || "").replace(/\n/g, "<br>")}</p>`;
-                    if (item.post.images && item.post.images.length > 0) {
-                        htmlContent += item.post.images.map(img => `<img src="${img}">`).join("");
-                    }
                 }
+
+                // 【新增】图片提取与终极去重逻辑
+                let imgPool = [];
+                // 1. 塞入封面图
+                if (item.post.cover) imgPool.push(item.post.cover);
+                // 2. 塞入图集数组
+                if (item.post.images && Array.isArray(item.post.images)) {
+                    imgPool.push(...item.post.images);
+                }
+
+                // 3. 利用 Set 数据结构自动去重（解决 cover 与 images 重复的问题）
+                let uniqueImgs = [...new Set(imgPool)];
+
+                // 4. 将提取出的独立图片追加到正文末尾
+                uniqueImgs.forEach(img => {
+                    // 核心判断：如果图片已经在 structured_content 里被渲染过了，就不再重复追加
+                    if (img && !htmlContent.includes(img)) {
+                        htmlContent += `<img src="${img}">`;
+                    }
+                });
 
                 // 【新增】全局清理逻辑：将混杂了空格、全角空格(\xA0)的多个连续换行，合并为单个换行
                 htmlContent = htmlContent.replace(/(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*){2,}/gi, "<br>");
@@ -269,7 +286,7 @@ export default class rssPush extends plugin {
 
         let msgToSend = msgBody;
         if (desc.length > 800) {
-            const forwardNode = [ { message: msgBody, nickname: Bot.nickname, user_id: Bot.uin } ];
+            const forwardNode = [{ message: msgBody, nickname: Bot.nickname, user_id: Bot.uin }];
             try {
                 msgToSend = e.isGroup ? await e.group.makeForwardMsg(forwardNode) : await e.friend.makeForwardMsg(forwardNode);
             } catch (err) {
@@ -347,7 +364,7 @@ export default class rssPush extends plugin {
 
                     let msgToSend = msgBody;
                     if (desc.length > 800) {
-                        const forwardNode = [ { message: msgBody, nickname: Bot.nickname, user_id: Bot.uin } ];
+                        const forwardNode = [{ message: msgBody, nickname: Bot.nickname, user_id: Bot.uin }];
                         try {
                             // 兼容不同适配器的 API (TRSSYz / NapCat 适配)
                             if (typeof group.makeForwardMsg === "function") {
@@ -419,7 +436,7 @@ export default class rssPush extends plugin {
             return e.reply("该RSS已存在并包含在该群聊..", true);
         }
 
-        feeds.push({ url, targetGroups: [ groupId ], screenshot: true });
+        feeds.push({ url, targetGroups: [groupId], screenshot: true });
         await configControl.set("feeds", feeds);
         return e.reply("RSS订阅设置成功！", true);
     }
