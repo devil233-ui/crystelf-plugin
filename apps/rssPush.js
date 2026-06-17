@@ -284,21 +284,30 @@ export default class rssPush extends plugin {
         if (desc.startsWith(cleanTitle)) desc = desc.substring(cleanTitle.length).trim();
         const msgBody = `[RSS预览] ${cleanTitle}\n${desc ? desc + "\n" : ""}${post.link}\n${this.formatDate(post.date)}`;
 
-        let msgToSend = msgBody;
-        if (desc.length > 800) {
-            const forwardNode = [{ message: msgBody, nickname: Bot.nickname, user_id: Bot.uin }];
-            try {
-                msgToSend = e.isGroup ? await e.group.makeForwardMsg(forwardNode) : await e.friend.makeForwardMsg(forwardNode);
-            } catch (err) {
-                if (global.logger) global.logger.error("[RSS预览] 制作转发消息失败，降级为截断文本", err);
-                // 【核心修复】转发失败时强制截断，防止超长文本导致底层 NTQQ 崩溃
-                msgToSend = `[RSS预览] ${cleanTitle}\n${desc.substring(0, 500)}...\n(正文过长，请点击下方链接查看完整内容)\n${post.link}\n${this.formatDate(post.date)}`;
-            }
-        }
-
-        let resPaths = [];
         try {
-            await e.reply(msgToSend);
+            if (desc.length > 800) {
+                // 每 4000 字切片，分别做成合并转发（折叠）发送
+                let chunks = [];
+                for (let i = 0; i < msgBody.length; i += 4000) {
+                    chunks.push(msgBody.substring(i, i + 4000));
+                }
+                for (let i = 0; i < chunks.length; i++) {
+                    const chunk = chunks[i];
+                    const forwardNode = [{ "message": chunk, "nickname": Bot.nickname, "user_id": Bot.uin }];
+                    let msgToSend = chunk;
+                    try {
+                        msgToSend = e.isGroup ? await e.group.makeForwardMsg(forwardNode) : await e.friend.makeForwardMsg(forwardNode);
+                    } catch (err) {
+                        if (global.logger) global.logger.error(`[RSS预览] 制作第 ${i + 1} 个转发消息失败，降级为截断文本`, err);
+                        msgToSend = `[RSS预览] ${cleanTitle} (第 ${i + 1} 部分)\n${chunk.substring(0, 500)}...\n(正文过长截断)\n${post.link}`;
+                    }
+                    await e.reply(msgToSend);
+                    await tools.sleep(1000); // 稍微停顿防风控
+                }
+            } else {
+                // 短文本直接发送
+                await e.reply(msgBody);
+            }
             if (desc || post.content?.includes("<img") || post.image) {
                 // 自动撤回提示语
                 await e.reply("正在生成截图...", false, { recallMsg: 600 });
@@ -362,31 +371,41 @@ export default class rssPush extends plugin {
                     const group = Bot.pickGroup(groupId);
                     if (!group) continue;
 
-                    let msgToSend = msgBody;
-                    if (desc.length > 800) {
-                        const forwardNode = [{ message: msgBody, nickname: Bot.nickname, user_id: Bot.uin }];
-                        try {
-                            // 兼容不同适配器的 API (TRSSYz / NapCat 适配)
-                            if (typeof group.makeForwardMsg === "function") {
-                                msgToSend = await group.makeForwardMsg(forwardNode);
-                            } else if (typeof Bot.makeForwardMsg === "function") {
-                                msgToSend = await Bot.makeForwardMsg(forwardNode);
-                            } else {
-                                throw new Error("当前适配器不支持在定时任务中调用合并转发API");
-                            }
-                        } catch (err) {
-                            if (global.logger) global.logger.error("[RSS推送] 制作转发消息失败，降级为截断文本", err);
-                            // 【核心修复】转发失败时强制截断，防止超长文本导致底层 NTQQ 崩溃
-                            msgToSend = `[RSS推送] ${cleanTitle}\n${desc.substring(0, 500)}...\n(正文过长，请点击下方链接查看完整内容)\n${post.link}\n${this.formatDate(post.date)}`;
-                        }
-                    }
-
                     try {
-                        await group.sendMsg(msgToSend);
-                        pushSuccess = true; // 只要代码执行到这里没报错，说明发成功了！
+                        if (desc.length > 800) {
+                            // 每 4000 字切片，分别做成独立的合并转发（折叠）推送
+                            let chunks = [];
+                            for (let i = 0; i < msgBody.length; i += 4000) {
+                                chunks.push(msgBody.substring(i, i + 4000));
+                            }
+                            for (let i = 0; i < chunks.length; i++) {
+                                const chunk = chunks[i];
+                                const forwardNode = [{ "message": chunk, "nickname": Bot.nickname, "user_id": Bot.uin }];
+                                let msgToSend = chunk;
+                                try {
+                                    if (typeof group.makeForwardMsg === "function") {
+                                        msgToSend = await group.makeForwardMsg(forwardNode);
+                                    } else if (typeof Bot.makeForwardMsg === "function") {
+                                        msgToSend = await Bot.makeForwardMsg(forwardNode);
+                                    } else {
+                                        throw new Error("当前适配器不支持在定时任务中调用合并转发API");
+                                    }
+                                } catch (err) {
+                                    if (global.logger) global.logger.error(`[RSS推送] 制作第 ${i + 1} 个转发消息失败`, err);
+                                    msgToSend = `[RSS推送] ${cleanTitle} (第 ${i + 1} 部分)\n${chunk.substring(0, 500)}...\n(正文过长截断)\n${post.link}`;
+                                }
+                                await group.sendMsg(msgToSend);
+                                await tools.sleep(1000);
+                            }
+                            pushSuccess = true;
+                        } else {
+                            // 短动态直接单包发送
+                            await group.sendMsg(msgBody);
+                            pushSuccess = true;
+                        }
                     } catch (err) {
                         if (global.logger) global.logger.error(`[RSS推送] 群 ${groupId} 发送文本失败:`, err);
-                        continue; // 文本都没发出去，后面的截图也不用发了，直接跳过当前群
+                        continue;
                     }
 
                     if (feed.screenshot && (desc || post.content?.includes("<img") || post.image)) {
