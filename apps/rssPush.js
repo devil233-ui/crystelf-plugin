@@ -95,6 +95,22 @@ export default class rssPush extends plugin {
         } catch (e) { return ""; }
     }
 
+    // --- 提取的公共 HTML 清理与排版方法 ---
+    cleanHtmlContent(htmlContent) {
+        if (!htmlContent) return "";
+        let text = htmlContent.trim();
+        // 1. 将回车符统一转成 HTML 的换行标签
+        text = text.replace(/\n/g, "<br>");
+        // 2. 将混杂了空格的多个连续换行合并为单个换行
+        text = text.replace(/(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*){2,}/gi, "<br>");
+        // 3. 顺手去掉开头和结尾可能多出来的换行符
+        text = text.replace(/^(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+|(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+$/gi, "");
+        // 4. 无情狙杀图片前后的多余换行，把间距全权交给 CSS
+        text = text.replace(/(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+(<img[^>]+>)/gi, "$1");
+        text = text.replace(/(<img[^>]+>)(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+/gi, "$1");
+        return text;
+    }
+
     // --- 统一数据获取适配器 ---
     async getFeedData(url) {
         // 拦截米游社 JSON API
@@ -169,14 +185,8 @@ export default class rssPush extends plugin {
                     }
                 });
 
-                // 【新增】全局清理逻辑：将混杂了空格、全角空格(\xA0)的多个连续换行，合并为单个换行
-                htmlContent = htmlContent.replace(/(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*){2,}/gi, "<br>");
-                // 顺手去掉开头和结尾可能多出来的换行符
-                htmlContent = htmlContent.replace(/^(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+|(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+$/gi, "");
-
-                // 【再新增】无情狙杀图片前后的多余换行 (利用 CSS block 自身的 margin 即可排版)
-                htmlContent = htmlContent.replace(/(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+(<img[^>]+>)/gi, "$1");
-                htmlContent = htmlContent.replace(/(<img[^>]+>)(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+/gi, "$1");
+                // 统一调用公共方法进行极致排版清理
+                htmlContent = this.cleanHtmlContent(htmlContent);
 
                 // 匹配对应的游戏版区
                 const gameMap = { 1: "bh3", 2: "ys", 6: "sr", 8: "zzz" };
@@ -195,7 +205,52 @@ export default class rssPush extends plugin {
         }
 
         // 其他常规链接，继续走原本的 XML 解析
-        return await rssTools.fetchFeed(url);
+        let items = await rssTools.fetchFeed(url);
+
+        if (Array.isArray(items)) {
+            // 【终极必杀】既然底层 rssTools 会私吞 enclosure 标签，我们直接暴力请求源码自己抓！
+            try {
+                const fetch = (await import("node-fetch")).default || global.fetch;
+                const res = await fetch(url);
+                const rawXml = await res.text();
+
+                // 按 <item> 切割源码，和 items 数组按顺序一一对应
+                const xmlItems = rawXml.split(/<item[^>]*>/i).slice(1);
+
+                items.forEach((item, index) => {
+                    if (typeof item.content !== "string") {
+                        item.content = item.description || "";
+                    }
+
+                    let imgUrl = "";
+                    if (typeof item.image === "string") imgUrl = item.image;
+                    else if (item.image && item.image.url) imgUrl = item.image.url;
+
+                    if (!imgUrl && xmlItems[index]) {
+                        const enclosureMatch = xmlItems[index].match(/<enclosure[^>]+url=["']([^"']+)["']/i);
+                        if (enclosureMatch && enclosureMatch[1]) {
+                            imgUrl = enclosureMatch[1];
+                            // 确认没问题了，把这个刷屏的调试探针注释掉
+                            // if (global.logger) global.logger.mark(`[RSS拦截] 成功从源码中暴力抢救出封面图: ${imgUrl}`);
+                        }
+                    }
+
+                    if (imgUrl) {
+                        item.image = imgUrl; // 确保模板能拿到背景图兜底
+                        // 如果正文 HTML 里根本没有这张图，强制把它塞到正文最开头
+                        if (!item.content.includes(imgUrl)) {
+                            item.content = `<img src="${imgUrl}">` + item.content;
+                        }
+                    }
+
+                    // 统一调用公共方法进行极致排版清理
+                    item.content = this.cleanHtmlContent(item.content);
+                });
+            } catch (e) {
+                if (global.logger) global.logger.error("[RSS解析] 暴力提取XML封面图失败", e);
+            }
+        }
+        return items;
     }
 
     // --- 综合过滤逻辑 (黑白双修，黑名单绝对优先级) ---
@@ -284,6 +339,7 @@ export default class rssPush extends plugin {
         if (desc.startsWith(cleanTitle)) desc = desc.substring(cleanTitle.length).trim();
         const msgBody = `[RSS预览] ${cleanTitle}\n${desc ? desc + "\n" : ""}${post.link}\n${this.formatDate(post.date)}`;
 
+        let resPaths = []; // 【补上这行！被哈基米误删的罪魁祸首】
         try {
             if (desc.length > 800) {
                 // 每 4000 字切片，分别做成合并转发（折叠）发送
