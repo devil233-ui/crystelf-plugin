@@ -2,133 +2,298 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{title}}</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/default.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
-    <script>hljs.highlightAll();</script>
     <style>
-        html, body {
-            margin: 0;
-            padding: 0;
-            font-family: "Helvetica Neue", sans-serif;
-            overflow-x: hidden;
-            position: relative;
-            min-height: 100vh;
+        :root {
+            color-scheme: light;
         }
 
-        .background {
-            top: 0;
-            left: 0;
-            min-height: 100vh;
-            height: 100%;
-            position: absolute;
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
             width: 100%;
-            background-image: url('https://www.dmoe.cc/random.php');
-            background-size: cover;
-            background-position: center;
-            z-index: -2;
-            filter: blur(8px);
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            padding: 32px;
+            overflow-x: hidden;
+            background: #edf0f2;
+            color: #27313d;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+            letter-spacing: 0;
         }
 
         .container {
-            position: relative;
-            max-width: 760px;
-            margin: 60px auto;
-            padding: 30px;
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 12px;
-            backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
-            border: 2px solid rgba(76, 175, 80, 0.7);
-        }
-
-        .container pre code {
-            font-family: 'Fira Code', 'Courier New', monospace;
-            font-size: 14px;
+            width: 100%;
+            max-width: 736px;
+            margin: 0 auto;
+            overflow: hidden;
+            background: #ffffff;
+            border: 1px solid #d7dde2;
+            border-top: 5px solid #159878;
             border-radius: 8px;
-            padding: 16px;
-            display: block;
-            overflow-x: auto;
-            background: rgba(0, 0, 0, 0.58);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #ffffff;
+            box-shadow: 0 8px 24px rgba(25, 35, 45, 0.1);
         }
 
+        .header {
+            padding: 30px 38px 26px;
+            border-bottom: 1px solid #e6eaed;
+        }
+
+        .source {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+            color: #08775d;
+            font-size: 17px;
+            font-weight: 650;
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+        }
+
+        .source-mark {
+            width: 10px;
+            height: 10px;
+            flex: 0 0 10px;
+            background: #159878;
+            border-radius: 2px;
+        }
 
         h1 {
-            margin-top: 0;
-            font-size: 26px;
-            color: #fff;
+            margin: 0;
+            color: #18212b;
+            font-size: 36px;
+            font-weight: 720;
+            line-height: 1.3;
+            overflow-wrap: anywhere;
         }
 
         .meta {
-            font-size: 14px;
-            color: #ccc;
-            margin-bottom: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 22px;
+            margin-top: 18px;
+            color: #69747f;
+            font-size: 17px;
+            line-height: 1.5;
+        }
+
+        .meta-label {
+            margin-right: 7px;
+            color: #929ba3;
         }
 
         .content {
-            font-size: 16px;
-            line-height: 1.7;
-            color: #eee;
+            padding: 30px 38px 34px;
+            color: #27313d;
+            font-size: 26px;
+            line-height: 1.68;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        #crystelf-super-text > :first-child {
+            margin-top: 0;
+        }
+
+        #crystelf-super-text > :last-child {
+            margin-bottom: 0;
+        }
+
+        .content p,
+        .content ul,
+        .content ol,
+        .content blockquote,
+        .content pre,
+        .content table,
+        .content figure {
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+
+        .content p:empty {
+            display: none;
+        }
+
+        .content ul,
+        .content ol {
+            padding-left: 1.3em;
+        }
+
+        .content li + li {
+            margin-top: 7px;
+        }
+
+        .content h2,
+        .content h3,
+        .content h4 {
+            margin: 28px 0 14px;
+            color: #18212b;
+            line-height: 1.35;
+        }
+
+        .content h2 {
+            font-size: 31px;
+        }
+
+        .content h3,
+        .content h4 {
+            font-size: 28px;
+        }
+
+        .content a {
+            color: #096cc1;
+            text-decoration-color: #9fc5e4;
+            text-decoration-thickness: 1px;
+            text-underline-offset: 4px;
         }
 
         .content img {
+            display: block;
+            width: auto;
             max-width: 100%;
-            border-radius: 8px;
-            margin-top: 10px;
+            height: auto;
+            margin: 18px auto;
+            object-fit: contain;
+            background: #ffffff;
+            border: 1px solid #dde2e6;
+            border-radius: 6px;
+        }
+
+        .content .lightbox-wrapper,
+        .content .ql-image,
+        .content .ql-image-box,
+        .content figure {
+            max-width: 100%;
+            height: auto;
+        }
+
+        .content .lightbox-wrapper {
+            margin: 18px 0 20px;
+        }
+
+        .content .lightbox-wrapper img,
+        .content figure img {
+            margin: 0 auto;
+        }
+
+        .content blockquote {
+            padding: 14px 18px;
+            background: #fff6f3;
+            border-left: 4px solid #dc6a55;
+            color: #4b555f;
+        }
+
+        .content code {
+            padding: 2px 6px;
+            background: #f0f3f5;
+            border-radius: 4px;
+            color: #9f3544;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+            font-size: 0.86em;
+        }
+
+        .content pre {
+            max-width: 100%;
+            padding: 18px 20px;
+            overflow-x: auto;
+            background: #1d2730;
+            border-radius: 6px;
+            color: #edf2f5;
+            font-size: 19px;
+            line-height: 1.55;
+            white-space: pre-wrap;
+        }
+
+        .content pre code {
+            padding: 0;
+            background: transparent;
+            color: inherit;
+            font-size: inherit;
+        }
+
+        .content small {
+            display: inline-block;
+            padding: 7px 11px;
+            background: #f0f3f5;
+            border-radius: 4px;
+            color: #63707b;
+            font-size: 17px;
+            line-height: 1.45;
+        }
+
+        .content table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 21px;
+        }
+
+        .content th,
+        .content td {
+            padding: 10px 12px;
+            border: 1px solid #dce1e5;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .content th {
+            background: #f3f5f6;
         }
 
         .footer {
-            margin-top: 30px;
-            font-size: 14px;
-            color: #aaa;
-            text-align: right;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            padding: 18px 38px;
+            background: #f7f9fa;
+            border-top: 1px solid #e3e7ea;
+            color: #7b858e;
+            font-size: 15px;
+            line-height: 1.4;
         }
 
-        .footer a {
-            color: #40e147;
+        .original-link {
+            color: #08775d;
+            font-weight: 650;
             text-decoration: none;
         }
 
-        .footer a:hover {
-            text-decoration: underline;
-        }
-
-        .bottom-credit {
-            text-align: center;
-            font-size: 15px;
-            color: rgb(0, 0, 0);
-            margin: 60px 20px 20px;
-        }
-
-        @media (max-width: 800px) {
-            .container {
-                margin: 40px 16px;
-                padding: 20px;
-            }
+        .credit {
+            color: #9aa2a9;
         }
     </style>
 </head>
 <body>
-<div class="background"></div>
+<article class="container">
+    <header class="header">
+        <div class="source">
+            <span class="source-mark"></span>
+            <span>{{feedTitle}}</span>
+        </div>
+        <h1>{{title}}</h1>
+        <div class="meta">
+            <span><span class="meta-label">作者</span>{{author}}</span>
+            <span><span class="meta-label">发布于</span>{{date}}</span>
+        </div>
+    </header>
 
-<div class="container">
-    <h1>{{title}}</h1>
-    <div class="meta">作者：{{author}} | 发布于：{{date}}</div>
-    <div class="content">
+    <main class="content">
         {{content}}
-    </div>
-    <div class="footer">
-        来自 <a href="{{link}}" target="_blank">{{feedTitle}}</a>
-    </div>
-</div>
+    </main>
 
-<div class="bottom-credit">
-    Created by devil233-ui/crystelf-plugin
-</div>
+    <footer class="footer">
+        <a class="original-link" href="{{link}}" target="_blank">查看原文</a>
+        <span class="credit">crystelf-plugin</span>
+    </footer>
+</article>
 </body>
 </html>
