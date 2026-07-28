@@ -95,7 +95,7 @@
             padding: 30px 38px 34px;
             color: #27313d;
             font-size: 26px;
-            line-height: 1.68;
+            line-height: 1.55;
             overflow-wrap: anywhere;
             word-break: break-word;
         }
@@ -116,7 +116,7 @@
         .content table,
         .content figure {
             margin-top: 0;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
 
         .content p:empty {
@@ -125,11 +125,15 @@
 
         .content ul,
         .content ol {
-            padding-left: 1.3em;
+            padding-left: 1.2em;
         }
 
         .content li + li {
-            margin-top: 7px;
+            margin-top: 12px;
+        }
+
+        .content li > p {
+            margin-bottom: 0;
         }
 
         .content h2,
@@ -168,6 +172,84 @@
             border-radius: 6px;
         }
 
+        .content img.emoji {
+            display: inline-block;
+            width: 1.2em;
+            height: 1.2em;
+            margin: 0 0.12em;
+            border: 0;
+            border-radius: 0;
+            vertical-align: -0.2em;
+            background: transparent;
+        }
+
+        .content .miyoushe-link-cards {
+            margin: 18px 0 16px;
+        }
+
+        .content a.miyoushe-link-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 10px;
+            background: #f3f5f7;
+            border: 1px solid #e1e5e8;
+            border-radius: 6px;
+            color: #27313d;
+            text-decoration: none;
+        }
+
+        .content a.miyoushe-link-card + a.miyoushe-link-card {
+            margin-top: 10px;
+        }
+
+        .content img.miyoushe-link-card-cover {
+            width: 84px;
+            height: 64px;
+            flex: 0 0 84px;
+            margin: 0;
+            object-fit: cover;
+            border: 0;
+            border-radius: 5px;
+        }
+
+        .miyoushe-link-card-body {
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .miyoushe-link-card-label {
+            color: #8a949d;
+            font-size: 15px;
+            line-height: 1.3;
+        }
+
+        .miyoushe-link-card-title {
+            color: #27313d;
+            font-size: 20px;
+            font-weight: 650;
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+        }
+
+        .content .miyoushe-topics {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 16px 0 2px;
+        }
+
+        .content .miyoushe-topics span {
+            padding: 5px 11px;
+            background: #f0f2f3;
+            border-radius: 999px;
+            color: #65717b;
+            font-size: 16px;
+            line-height: 1.35;
+        }
+
         .content .lightbox-wrapper,
         .content .ql-image,
         .content .ql-image-box,
@@ -190,6 +272,10 @@
             background: #fff6f3;
             border-left: 4px solid #dc6a55;
             color: #4b555f;
+        }
+
+        .content blockquote > :last-child {
+            margin-bottom: 0;
         }
 
         .content code {
@@ -277,11 +363,10 @@
     <header class="header">
         <div class="source">
             <span class="source-mark"></span>
-            <span>{{feedTitle}}</span>
+            <span>{{sourceTitle}}</span>
         </div>
         <h1>{{title}}</h1>
         <div class="meta">
-            <span><span class="meta-label">作者</span>{{author}}</span>
             <span><span class="meta-label">发布于</span>{{date}}</span>
         </div>
     </header>
@@ -292,7 +377,7 @@
 
     <footer class="footer">
         <a class="original-link" href="{{link}}" target="_blank">查看原文</a>
-        <span class="credit">crystelf-plugin</span>
+        <span class="credit">Created by devil233-ui/crystelf-plugin</span>
     </footer>
 </article>
 </body>

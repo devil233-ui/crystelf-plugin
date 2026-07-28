@@ -7,6 +7,17 @@ import rssCache from "../lib/rss/rssCache.js";
 import schedule from "node-schedule";
 import tools from "../components/tool.js";
 
+const MIYOUSHE_DETAIL_TTL = 30 * 60 * 1000;
+
+function escapeHtml(value) {
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 export default class rssPush extends plugin {
     constructor() {
         super({
@@ -32,6 +43,7 @@ export default class rssPush extends plugin {
 
         this.filterDir = path.join(process.cwd(), "data", "crystelf");
         this.filterPath = path.join(this.filterDir, "rssFilter.json");
+        this.miyousheDetailCache = new Map();
 
         if (!fs.existsSync(this.filterDir)) {
             fs.mkdirSync(this.filterDir, { recursive: true });
@@ -99,16 +111,50 @@ export default class rssPush extends plugin {
     cleanHtmlContent(htmlContent) {
         if (!htmlContent) return "";
         let text = htmlContent.trim();
-        // 1. 将回车符统一转成 HTML 的换行标签
+        // 1. 标签之间的换行只是 HTML 源码排版，不能渲染成额外空行。
+        text = text.replace(/>\s*[\r\n]+\s*</g, "><");
+        // 2. 将正文内部剩余的回车符统一转成 HTML 换行标签
         text = text.replace(/\n/g, "<br>");
-        // 2. 将混杂了空格的多个连续换行合并为单个换行
+        // 3. 将混杂了空格的多个连续换行合并为单个换行
         text = text.replace(/(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*){2,}/gi, "<br>");
-        // 3. 顺手去掉开头和结尾可能多出来的换行符
+        // 4. 顺手去掉开头和结尾可能多出来的换行符
         text = text.replace(/^(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+|(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+$/gi, "");
-        // 4. 无情狙杀图片前后的多余换行，把间距全权交给 CSS
+        // 5. 清除图片前后的多余换行，把间距交给 CSS
         text = text.replace(/(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+(<img[^>]+>)/gi, "$1");
         text = text.replace(/(<img[^>]+>)(?:[\s\xA0]*<br\s*\/?>[\s\xA0]*)+/gi, "$1");
         return text;
+    }
+
+    async getMiyoushePostDetail(fetcher, item) {
+        const postId = item.post?.post_id;
+        if (!postId) return item;
+
+        const cached = this.miyousheDetailCache.get(postId);
+        if (cached?.expiresAt > Date.now()) return cached.item;
+
+        try {
+            const detailUrl = `https://bbs-api.miyoushe.com/post/wapi/getPostFull?gids=${item.post.game_id || 2}&post_id=${postId}&read=1`;
+            const response = await fetcher(detailUrl, {
+                headers: {
+                    "Referer": "https://www.miyoushe.com/",
+                    "User-Agent": "Mozilla/5.0",
+                },
+                signal: AbortSignal.timeout(12000),
+            });
+            if (!response.ok) return item;
+
+            const data = await response.json();
+            const detailItem = data.retcode === 0 ? data.data?.post : null;
+            if (!detailItem?.post) return item;
+
+            this.miyousheDetailCache.set(postId, {
+                item: detailItem,
+                expiresAt: Date.now() + MIYOUSHE_DETAIL_TTL,
+            });
+            return detailItem;
+        } catch (err) {
+            return item;
+        }
     }
 
     // --- 统一数据获取适配器 ---
@@ -123,8 +169,14 @@ export default class rssPush extends plugin {
             if (data.retcode !== 0) throw new Error(data.message || "米游社API请求失败");
             if (!data.data || !data.data.list) return [];
 
+            const sourceItems = data.data.list;
+            const detailItems = await Promise.all(sourceItems.map((item, index) => {
+                if (index >= 5) return item;
+                return this.getMiyoushePostDetail(fetch, item);
+            }));
+
             // 将 JSON 映射为标准的 RSS 对象格式
-            return data.data.list.map(item => {
+            return detailItems.map(item => {
                 let htmlContent = "";
 
                 // 优先尝试解析 structured_content (米游社长文专属的高级排版结构)
@@ -184,6 +236,25 @@ export default class rssPush extends plugin {
                         htmlContent += `<img src="${img}">`;
                     }
                 });
+
+                const linkCards = Array.isArray(item.link_card_list) ? item.link_card_list : [];
+                if (linkCards.length) {
+                    htmlContent += "<div class=\"miyoushe-link-cards\">";
+                    linkCards.forEach(card => {
+                        const href = escapeHtml(card.landing_url || card.origin_url);
+                        const cover = escapeHtml(card.cover);
+                        const title = escapeHtml(card.title || "关联帖子");
+                        htmlContent += `<a class="miyoushe-link-card" href="${href}">`;
+                        if (cover) htmlContent += `<img class="miyoushe-link-card-cover" src="${cover}" alt="">`;
+                        htmlContent += `<span class="miyoushe-link-card-body"><span class="miyoushe-link-card-label">关联帖子</span><span class="miyoushe-link-card-title">${title}</span></span></a>`;
+                    });
+                    htmlContent += "</div>";
+                }
+
+                const topics = Array.isArray(item.topics) ? item.topics : [];
+                if (topics.length) {
+                    htmlContent += `<div class="miyoushe-topics">${topics.map(topic => `<span>${escapeHtml(topic.name)}</span>`).join("")}</div>`;
+                }
 
                 // 统一调用公共方法进行极致排版清理
                 htmlContent = this.cleanHtmlContent(htmlContent);
