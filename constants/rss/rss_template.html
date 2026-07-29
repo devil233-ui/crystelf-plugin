@@ -183,6 +183,18 @@
             background: transparent;
         }
 
+        .content img.miyoushe-emoji {
+            display: inline-block;
+            width: 1.6em;
+            height: 1.6em;
+            margin: 0 0.12em;
+            object-fit: contain;
+            border: 0;
+            border-radius: 0;
+            vertical-align: -0.42em;
+            background: transparent;
+        }
+
         .content .miyoushe-link-cards {
             margin: 18px 0 16px;
         }
@@ -201,6 +213,14 @@
 
         .content a.miyoushe-link-card + a.miyoushe-link-card {
             margin-top: 10px;
+        }
+
+        .content a.miyoushe-inline-card {
+            margin: 18px 0 16px;
+        }
+
+        .content a.miyoushe-inline-card + a.miyoushe-inline-card {
+            margin-top: -6px;
         }
 
         .content img.miyoushe-link-card-cover {
@@ -248,6 +268,36 @@
             color: #65717b;
             font-size: 16px;
             line-height: 1.35;
+        }
+
+        .content .miyoushe-list-item {
+            display: flex;
+            gap: 10px;
+        }
+
+        .content .miyoushe-list-item > span {
+            flex: 0 0 auto;
+            color: #65717b;
+        }
+
+        .content .miyoushe-divider {
+            height: 1px;
+            margin: 26px 0;
+            background: #dfe4e7;
+            border: 0;
+        }
+
+        .content .miyoushe-backup-text {
+            margin: 18px 0;
+            padding: 15px 18px;
+            background: #f5f7f8;
+            border-left: 4px solid #8c99a3;
+            color: #4b555f;
+            font-size: 22px;
+        }
+
+        .content .miyoushe-backup-text > :last-child {
+            margin-bottom: 0;
         }
 
         .content .lightbox-wrapper,

@@ -8,6 +8,11 @@ import schedule from "node-schedule";
 import tools from "../components/tool.js";
 
 const MIYOUSHE_DETAIL_TTL = 30 * 60 * 1000;
+const MIYOUSHE_EMOJI_TTL = 24 * 60 * 60 * 1000;
+const MIYOUSHE_EMOJI_RETRY_TTL = 30 * 60 * 1000;
+// API reference: https://github.com/KeElena/miyoushe_emoji (MIT)
+const MIYOUSHE_EMOJI_API = "https://bbs-api-static.miyoushe.com/misc/api/emoticon_set?gids=2";
+let miyousheEmojiCache = { expiresAt: 0, items: new Map() };
 
 function escapeHtml(value) {
     return String(value || "")
@@ -16,6 +21,152 @@ function escapeHtml(value) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+}
+
+function safeUrl(value) {
+    try {
+        const url = new URL(String(value || ""));
+        return [ "http:", "https:" ].includes(url.protocol) ? escapeHtml(url.href) : "";
+    } catch (err) {
+        return "";
+    }
+}
+
+function safeColor(value) {
+    const color = String(value || "").trim();
+    if (/^#[\da-f]{3,8}$/i.test(color)) return color;
+    if (/^(?:rgb|hsl)a?\([\d\s.,%+-]+\)$/i.test(color)) return color;
+    if (/^[a-z]+$/i.test(color)) return color;
+    return "";
+}
+
+async function getMiyousheEmojiMap(fetcher) {
+    if (miyousheEmojiCache.expiresAt > Date.now()) return miyousheEmojiCache.items;
+
+    try {
+        const response = await fetcher(MIYOUSHE_EMOJI_API, {
+            headers: {
+                "Referer": "https://www.miyoushe.com/",
+                "User-Agent": "Mozilla/5.0",
+            },
+            signal: AbortSignal.timeout(8000),
+        });
+        if (!response.ok) throw new Error(`Status code ${response.status}`);
+
+        const data = await response.json();
+        const items = new Map();
+        (data.data?.list || []).forEach(group => {
+            (group.list || []).forEach(emoji => {
+                if (emoji.name && emoji.icon) items.set(emoji.name, emoji.icon);
+            });
+        });
+        miyousheEmojiCache = { items, expiresAt: Date.now() + MIYOUSHE_EMOJI_TTL };
+    } catch (err) {
+        miyousheEmojiCache = {
+            items: miyousheEmojiCache.items,
+            expiresAt: Date.now() + MIYOUSHE_EMOJI_RETRY_TTL,
+        };
+    }
+    return miyousheEmojiCache.items;
+}
+
+function renderMiyousheLinkCard(card, inline = false) {
+    if (!card) return "";
+    const href = safeUrl(card.landing_url || card.origin_url);
+    const cover = safeUrl(card.cover);
+    const title = escapeHtml(card.title || "关联帖子");
+    const inlineClass = inline ? " miyoushe-inline-card" : "";
+    let html = `<a class="miyoushe-link-card${inlineClass}" href="${href}">`;
+    if (cover) html += `<img class="miyoushe-link-card-cover" src="${cover}" alt="">`;
+    html += `<span class="miyoushe-link-card-body"><span class="miyoushe-link-card-label">关联帖子</span><span class="miyoushe-link-card-title">${title}</span></span></a>`;
+    return html;
+}
+
+function renderMiyousheText(text, emojiMap) {
+    return String(text || "").split(/(_\([^)]+\))/g).map(part => {
+        const match = part.match(/^_\(([^)]+)\)$/);
+        if (!match) return escapeHtml(part);
+
+        const icon = safeUrl(emojiMap.get(match[1]));
+        if (!icon) return escapeHtml(part);
+        return `<img class="miyoushe-emoji" src="${icon}" alt="${escapeHtml(match[1])}">`;
+    }).join("");
+}
+
+function renderMiyousheInlineText(text, attributes, emojiMap) {
+    let html = renderMiyousheText(text, emojiMap);
+    const color = safeColor(attributes?.color);
+    const href = safeUrl(attributes?.link);
+
+    if (attributes?.bold) html = `<strong>${html}</strong>`;
+    if (attributes?.italic) html = `<em>${html}</em>`;
+    if (attributes?.underline) html = `<u>${html}</u>`;
+    if (attributes?.strike) html = `<s>${html}</s>`;
+    if (color) html = `<span style="color:${color}">${html}</span>`;
+    if (href) html = `<a href="${href}">${html}</a>`;
+    return html;
+}
+
+export function renderMiyousheStructuredContent(structuredContent, emojiMap = new Map()) {
+    const blocks = JSON.parse(structuredContent);
+    const renderedCardIds = new Set();
+    let html = "";
+    let line = "";
+
+    const flushLine = (attributes = {}) => {
+        const content = line.trim();
+        line = "";
+        if (!content) return;
+
+        if (attributes.header === 1) {
+            html += `<h2>${content}</h2>`;
+        } else if (attributes.header) {
+            html += `<h3>${content}</h3>`;
+        } else if (attributes.blockquote) {
+            html += `<blockquote><p>${content}</p></blockquote>`;
+        } else if (attributes.list) {
+            const marker = attributes.list === "ordered" ? "1." : "•";
+            html += `<p class="miyoushe-list-item"><span>${marker}</span>${content}</p>`;
+        } else {
+            html += `<p>${content}</p>`;
+        }
+    };
+
+    blocks.forEach(block => {
+        if (typeof block.insert === "string") {
+            const segments = block.insert.split("\n");
+            segments.forEach((segment, index) => {
+                if (segment) line += renderMiyousheInlineText(segment, block.attributes, emojiMap);
+                if (index < segments.length - 1) flushLine(block.attributes);
+            });
+            return;
+        }
+
+        if (typeof block.insert !== "object" || !block.insert) return;
+        flushLine();
+
+        if (block.insert.image) {
+            const image = safeUrl(block.insert.image);
+            if (image) html += `<img src="${image}" alt="">`;
+        } else if (block.insert.divider) {
+            html += "<hr class=\"miyoushe-divider\">";
+        } else if (block.insert.link_card) {
+            const card = block.insert.link_card;
+            if (card.card_id) renderedCardIds.add(String(card.card_id));
+            html += renderMiyousheLinkCard(card, true);
+        } else if (block.insert.backup_text) {
+            const paragraphs = String(block.insert.backup_text)
+                .split(/\n+/)
+                .map(value => value.trim())
+                .filter(Boolean)
+                .map(value => `<p>${escapeHtml(value)}</p>`)
+                .join("");
+            if (paragraphs) html += `<div class="miyoushe-backup-text">${paragraphs}</div>`;
+        }
+    });
+
+    flushLine();
+    return { html, renderedCardIds };
 }
 
 export default class rssPush extends plugin {
@@ -174,39 +325,19 @@ export default class rssPush extends plugin {
                 if (index >= 5) return item;
                 return this.getMiyoushePostDetail(fetch, item);
             }));
+            const emojiMap = await getMiyousheEmojiMap(fetch);
 
             // 将 JSON 映射为标准的 RSS 对象格式
             return detailItems.map(item => {
                 let htmlContent = "";
+                let renderedCardIds = new Set();
 
                 // 优先尝试解析 structured_content (米游社长文专属的高级排版结构)
                 if (item.post.structured_content) {
                     try {
-                        const structData = JSON.parse(item.post.structured_content);
-                        structData.forEach(block => {
-                            // 1. 处理纯文本与行内样式 (加粗、变色)
-                            if (typeof block.insert === "string") {
-                                let text = block.insert.replace(/\n/g, "<br>");
-                                if (block.attributes) {
-                                    if (block.attributes.color) text = `<span style="color:${block.attributes.color}">${text}</span>`;
-                                    if (block.attributes.bold) text = `<strong>${text}</strong>`;
-                                }
-                                htmlContent += text;
-                            }
-                            // 2. 处理多媒体与功能卡片
-                            else if (typeof block.insert === "object") {
-                                if (block.insert.image) {
-                                    htmlContent += `<img src="${block.insert.image}">`; // 去掉硬编码的 <br>
-                                } else if (block.insert.divider) {
-                                    htmlContent += "<hr>";
-                                } else if (block.insert.link_card) {
-                                    htmlContent += `<br><strong>[链接卡片: ${block.insert.link_card.title}]</strong><br>`;
-                                } else if (block.insert.backup_text) {
-                                    // 处理某些折叠或特殊模块的备用文本
-                                    htmlContent += `<br><span>${block.insert.backup_text.replace(/\n/g, "<br>")}</span><br>`;
-                                }
-                            }
-                        });
+                        const rendered = renderMiyousheStructuredContent(item.post.structured_content, emojiMap);
+                        htmlContent = rendered.html;
+                        renderedCardIds = rendered.renderedCardIds;
                     } catch (e) {
                         if (global.logger) global.logger.error("[RSS解析] structured_content 序列化失败", e);
                     }
@@ -237,16 +368,12 @@ export default class rssPush extends plugin {
                     }
                 });
 
-                const linkCards = Array.isArray(item.link_card_list) ? item.link_card_list : [];
+                const linkCards = (Array.isArray(item.link_card_list) ? item.link_card_list : [])
+                    .filter(card => !renderedCardIds.has(String(card.card_id)));
                 if (linkCards.length) {
                     htmlContent += "<div class=\"miyoushe-link-cards\">";
                     linkCards.forEach(card => {
-                        const href = escapeHtml(card.landing_url || card.origin_url);
-                        const cover = escapeHtml(card.cover);
-                        const title = escapeHtml(card.title || "关联帖子");
-                        htmlContent += `<a class="miyoushe-link-card" href="${href}">`;
-                        if (cover) htmlContent += `<img class="miyoushe-link-card-cover" src="${cover}" alt="">`;
-                        htmlContent += `<span class="miyoushe-link-card-body"><span class="miyoushe-link-card-label">关联帖子</span><span class="miyoushe-link-card-title">${title}</span></span></a>`;
+                        htmlContent += renderMiyousheLinkCard(card);
                     });
                     htmlContent += "</div>";
                 }

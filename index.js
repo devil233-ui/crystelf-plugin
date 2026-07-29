@@ -68,13 +68,10 @@ export { apps };
 function getConfigKey(fileName) {
   const keyMap = {
     "60s": "60s",
-    "ai": "ai",
     "auth": "auth",
     "auth-set": "auth",
     "face-reply": "faceReply",
     "face-reply-message": "faceReply",
-    "fanqie": "fanqie",
-    "help": "help",
     "music": "music",
     "poke": "poke",
     "rssPush": "rss",
