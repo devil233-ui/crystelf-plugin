@@ -11,9 +11,9 @@ const Path = {
   root: rootDir,
   apps: path.join(rootDir, "apps"),
   components: path.join(rootDir, "components"),
-  defaultConfig: path.join(rootDir, "config/config.json"),
-  defaultConfigPath: path.join(rootDir, "config"),
-  config: path.resolve(rootDir, "../../data/crystelf"),
+  defaultConfig: path.join(rootDir, "config/default/config.json"),
+  defaultConfigPath: path.join(rootDir, "config/default"),
+  config: path.join(rootDir, "config"),
   constants: path.join(rootDir, "constants"),
   lib: path.join(rootDir, "lib"),
   models: path.join(rootDir, "models"),
@@ -22,6 +22,7 @@ const Path = {
   yunzai: path.join(rootDir, "../../"),
   data: path.join(rootDir, "../../data/crystelf/data"),
   rssHTML: path.join(rootDir, "constants/rss/rss_template.html"),
+  runtimeData: path.join(rootDir, "../../data/crystelf"),
   rssCache: path.join(rootDir, "../../data/crystelf"),
 };
 

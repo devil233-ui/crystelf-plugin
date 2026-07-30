@@ -1,8 +1,8 @@
 import ConfigControl from "../lib/config/configControl.js";
+import Path from "../constants/path.js";
 import lodash from "lodash";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 
 /**
  * 配置处理逻辑
@@ -116,46 +116,17 @@ export async function setConfigData(data, { Result }) {
  */
 export async function resetConfig({ Result }) {
   try {
-    // 获取插件目录路径
-    const __filename = fileURLToPath(import.meta.url);
-    const pluginDir = path.dirname(__filename);
-    const configDir = path.join(pluginDir, "..", "..", "config");
-
-    // 获取数据目录路径
-    const dataConfigPath = path.join(process.cwd(), "data", "crystelf");
-
-    // 确保数据目录存在
-    if (!fs.existsSync(dataConfigPath)) {
-      fs.mkdirSync(dataConfigPath, { recursive: true });
-    }
-
-    // 读取所有配置文件
-    const configFiles = fs.readdirSync(configDir).filter((file) => file.endsWith(".json"));
+    const configFiles = fs
+      .readdirSync(Path.defaultConfigPath)
+      .filter((file) => file.endsWith(".json"));
     const defaultConfigs = {};
 
-    // 复制每个配置文件
     for (const file of configFiles) {
       const configName = path.basename(file, ".json");
-      const sourcePath = path.join(configDir, file);
-      const targetPath = path.join(dataConfigPath, file);
-
-      try {
-        // 读取源配置文件
-        const configContent = fs.readFileSync(sourcePath, "utf8");
-        const configData = JSON.parse(configContent);
-
-        // 写入目标配置文件
-        fs.writeFileSync(targetPath, configContent, "utf8");
-
-        // 添加到默认配置对象
-        defaultConfigs[configName] = configData;
-      } catch (error) {
-        logger.error(`[crystelf-plugin] 复制配置文件失败 ${file}: ${error.message}`);
-        return Result.error({}, `复制配置文件失败 ${file}: ${error.message}`);
-      }
+      const sourcePath = path.join(Path.defaultConfigPath, file);
+      defaultConfigs[configName] = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
     }
 
-    // 使用 ConfigControl.setMultiple 重置所有配置
     await ConfigControl.setMultiple(defaultConfigs);
 
     return Result.ok({}, "重置成功~");

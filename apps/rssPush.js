@@ -192,32 +192,7 @@ export default class rssPush extends plugin {
             fs.mkdirSync(this.rssTempDir, { recursive: true });
         }
 
-        this.filterDir = path.join(process.cwd(), "data", "crystelf");
-        this.filterPath = path.join(this.filterDir, "rssFilter.json");
         this.miyousheDetailCache = new Map();
-
-        if (!fs.existsSync(this.filterDir)) {
-            fs.mkdirSync(this.filterDir, { recursive: true });
-        }
-
-        // 如果配置文件不存在，自动生成一份包含黑白名单双模式的模板
-        if (!fs.existsSync(this.filterPath)) {
-            const defaultFilter = [
-                {
-                    "link": "miyoushe.com/sr",
-                    "mode": "blacklist", // 黑名单模式：包含关键词就杀
-                    "keywords": ["鸣潮", "鸣潮先约", "问卷调查"]
-                },
-                {
-                    "link": "miyoushe.com/zzz",
-                    "mode": "whitelist", // 白名单模式：【必须】包含关键词才放行
-                    "keywords": [""]
-                }
-            ];
-            fs.writeFileSync(this.filterPath, JSON.stringify(defaultFilter, null, 2), "utf-8");
-            if (global.logger) global.logger.mark(`[rssPush] 已生成综合过滤配置文件: ${this.filterPath}`);
-        }
-        // ------------------------------------
 
         const cronRule = "1/5 * * * *";
         if (!global.__rss_job_scheduled) {
@@ -358,7 +333,7 @@ export default class rssPush extends plugin {
                 }
 
                 // 3. 利用 Set 数据结构自动去重（解决 cover 与 images 重复的问题）
-                let uniqueImgs = [...new Set(imgPool)];
+                let uniqueImgs = [ ...new Set(imgPool) ];
 
                 // 4. 将提取出的独立图片追加到正文末尾
                 uniqueImgs.forEach(img => {
@@ -453,15 +428,7 @@ export default class rssPush extends plugin {
 
     // --- 综合过滤逻辑 (黑白双修，黑名单绝对优先级) ---
     isFiltered(post, feedUrl = "") {
-        let filterRules = [];
-        try {
-            if (fs.existsSync(this.filterPath)) {
-                filterRules = JSON.parse(fs.readFileSync(this.filterPath, "utf-8"));
-            }
-        } catch (e) {
-            if (global.logger) global.logger.error(`[RSS过滤] 读取配置失败: ${e.message}`);
-            return false;
-        }
+        const filterRules = configControl.get("rssFilter") || [];
 
         const postLink = (post.link || "").toLowerCase();
         const titleAndContent = ((post.title || "") + (post.content || "")).toLowerCase();
@@ -547,7 +514,7 @@ export default class rssPush extends plugin {
                 }
                 for (let i = 0; i < chunks.length; i++) {
                     const chunk = chunks[i];
-                    const forwardNode = [{ "message": chunk, "nickname": Bot.nickname, "user_id": Bot.uin }];
+                    const forwardNode = [ { "message": chunk, "nickname": Bot.nickname, "user_id": Bot.uin } ];
                     let msgToSend = chunk;
                     try {
                         msgToSend = e.isGroup ? await e.group.makeForwardMsg(forwardNode) : await e.friend.makeForwardMsg(forwardNode);
@@ -634,7 +601,7 @@ export default class rssPush extends plugin {
                             }
                             for (let i = 0; i < chunks.length; i++) {
                                 const chunk = chunks[i];
-                                const forwardNode = [{ "message": chunk, "nickname": Bot.nickname, "user_id": Bot.uin }];
+                                const forwardNode = [ { "message": chunk, "nickname": Bot.nickname, "user_id": Bot.uin } ];
                                 let msgToSend = chunk;
                                 try {
                                     if (typeof group.makeForwardMsg === "function") {
@@ -709,7 +676,7 @@ export default class rssPush extends plugin {
             return e.reply("该RSS已存在并包含在该群聊..", true);
         }
 
-        feeds.push({ url, targetGroups: [groupId], screenshot: true });
+        feeds.push({ url, targetGroups: [ groupId ], screenshot: true });
         await configControl.set("feeds", feeds);
         return e.reply("RSS订阅设置成功！", true);
     }
