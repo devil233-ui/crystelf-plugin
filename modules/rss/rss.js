@@ -95,7 +95,7 @@ const rssTools = {
         title: item.title,
         link: item.link,
         content: cleanHTML(item["content:encoded"] || item.content || item.description || ""),
-        author: item.creator || item.author || feed.title,
+        author: item.creator || item.author || "",
         date: item.pubDate || item.isoDate,
         feedTitle: feed.title,
         feedLink: feed.link,
