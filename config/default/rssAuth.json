@@ -1,0 +1,12 @@
+{
+    "aliases": {
+        "esa.zlb.ink": "eo.zlb.ink"
+    },
+    "sites": {
+        "eo.zlb.ink": {
+            "enabled": true,
+            "cookie": "",
+            "userAgent": "Mozilla/5.0 (compatible; crystelf-plugin RSS reader)"
+        }
+    }
+}

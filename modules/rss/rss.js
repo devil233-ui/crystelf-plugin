@@ -1,9 +1,52 @@
 import Parser from "rss-parser";
 import http2 from "node:http2";
+import configControl from "../../lib/config/configControl.js";
 
 const parser = new Parser();
 const HTTP2_TIMEOUT = 60000;
 const MAX_REDIRECTS = 5;
+const DEFAULT_USER_AGENT = "Mozilla/5.0 (compatible; crystelf-plugin RSS reader)";
+
+export function buildFeedAuthHeaders(feedUrl, authConfig = {}) {
+  const url = new URL(feedUrl);
+  const hostname = url.hostname.toLowerCase();
+  const configKey = authConfig.aliases?.[hostname] || hostname;
+  const siteConfig = authConfig.sites?.[configKey];
+  const cookie = String(siteConfig?.cookie || "").trim();
+  if (!siteConfig || siteConfig.enabled === false || !cookie) return {};
+
+  const referer = String(siteConfig.referer || `${url.origin}/`).trim();
+  const userAgent = String(siteConfig.userAgent || DEFAULT_USER_AGENT).trim();
+  return {
+    "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+    "Cookie": cookie,
+    "Referer": referer,
+    "User-Agent": userAgent,
+  };
+}
+
+const fetchWithAuth = async(feedUrl, headers, redirectCount = 0) => {
+  const response = await fetch(feedUrl, {
+    headers,
+    redirect: "manual",
+    signal: AbortSignal.timeout(HTTP2_TIMEOUT),
+  });
+
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get("location");
+    if (!location) throw new Error(`Status code ${response.status}`);
+    if (redirectCount >= MAX_REDIRECTS) throw new Error("Too many redirects");
+
+    const nextUrl = new URL(location, feedUrl);
+    const nextHeaders = nextUrl.origin === new URL(feedUrl).origin
+      ? headers
+      : Object.fromEntries(Object.entries(headers).filter(([ key ]) => key !== "Cookie"));
+    return fetchWithAuth(nextUrl.href, nextHeaders, redirectCount + 1);
+  }
+
+  if (!response.ok) throw new Error(`Status code ${response.status}`);
+  return response.text();
+};
 
 const fetchWithHTTP2 = (feedUrl, redirectCount = 0) => {
   return new Promise((resolve, reject) => {
@@ -65,6 +108,11 @@ const fetchWithHTTP2 = (feedUrl, redirectCount = 0) => {
 };
 
 const parseURL = async(url) => {
+  const authHeaders = buildFeedAuthHeaders(url, configControl.get("rssAuth") || {});
+  if (authHeaders.Cookie) {
+    return parser.parseString(await fetchWithAuth(url, authHeaders));
+  }
+
   try {
     return await parser.parseURL(url);
   } catch (err) {
