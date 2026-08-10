@@ -198,7 +198,9 @@ export default class rssPush extends plugin {
         if (!global.__rss_job_scheduled) {
             schedule.scheduleJob(cronRule, () => {
                 logger.mark(`[rssPush] 定时触发 (${cronRule})`);
-                this.pushFeeds();
+                void this.pushFeeds().catch((err) => {
+                    logger.error("[rssPush] 定时推送任务异常", err);
+                });
             });
             global.__rss_job_scheduled = true;
         }
@@ -550,6 +552,13 @@ export default class rssPush extends plugin {
     }
 
     async pushFeeds() {
+        if (global.__rss_push_running) {
+            if (global.logger) global.logger.warn("[rssPush] 上一轮仍在运行，本轮跳过");
+            return;
+        }
+        global.__rss_push_running = true;
+
+        try {
         let feeds = configControl.get("feeds");
         if (!Array.isArray(feeds)) return;
         for (const feed of feeds) {
@@ -579,6 +588,7 @@ export default class rssPush extends plugin {
             newItems.reverse();
 
             for (const post of newItems) {
+                if (global.logger) global.logger.info(`[RSS推送] 准备发送: ${post.link}`);
 
                 const cleanTitle = post.title.trim();
                 let desc = this.formatContent(post.content);
@@ -654,10 +664,14 @@ export default class rssPush extends plugin {
 
                 if (pushSuccess) {
                     await rssCache.set("global_dedupe", post.link);
+                    if (global.logger) global.logger.info(`[RSS推送] 已写入去重缓存: ${post.link}`);
                 } else {
                     if (global.logger) global.logger.warn(`[RSS推送] 致命失败：文章未成功推送到任何群聊，保留至下次重试 [${post.link}]`);
                 }
             }
+        }
+        } finally {
+            global.__rss_push_running = false;
         }
     }
 

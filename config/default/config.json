@@ -2,6 +2,8 @@
   "debug": true,
   "?maxFeed": "最长订阅",
   "maxFeed": 10,
+  "?maxRssDedupe": "RSS全局去重保留条数",
+  "maxRssDedupe": 500,
   "?autoUpdate": "是否自动更新插件",
   "autoUpdate": true,
   "poke": true,
