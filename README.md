@@ -5,15 +5,8 @@
 - 使用 Github  
 
     ```bash
-    git clone --depth=1 https://github.com/Jerryplusy/crystelf-plugin ./plugins/crystelf-plugin
+    git clone --depth=1 https://github.com/devil233-ui/crystelf-plugin ./plugins/crystelf-plugin
     ```
-  
-- 使用 Crystelf-Gitea镜像 (更新可能滞后)  
-    ```bash
-    git clone --depth=1 https://git.crystelf.top/Jerry/crystelf-plugin ./plugins/crystelf-plugin
-    ```
-
-
 ### 安装依赖  
 在`Yunzai`根目录下执行:  
 - npm `npm install`
@@ -67,9 +60,27 @@
 <details>
 <summary>rss订阅及推送</summary>
 
-- `#rss添加+订阅地址` 添加rss订阅源到该群聊,bot会定时检查该源是否更新并推送
-- `#rss移除+id` 在本群移除某个订阅
-- `#rss拉取+订阅地址` 测试拉取某个rss源
+- `rss添加+订阅地址` 添加rss订阅源到该群聊,bot会定时检查该源是否更新并推送
+- `rss移除+id` 在本群移除某个订阅
+- `rss拉取+订阅地址` 测试拉取某个rss源
+- 全局去重默认保留500条已处理链接,可通过`config/config.json`中的`maxRssDedupe`调整
+
+需要登录才能访问的RSS可在`config/rssAuth.json`中按域名配置Cookie。实际配置文件已被Git忽略,请勿把Cookie提交到仓库。以下示例让`esa.zlb.ink`复用`eo.zlb.ink`的认证信息:
+
+```json
+{
+  "aliases": {
+    "esa.zlb.ink": "eo.zlb.ink"
+  },
+  "sites": {
+    "eo.zlb.ink": {
+      "enabled": true,
+      "cookie": "在此填写浏览器请求中的完整Cookie",
+      "userAgent": "Mozilla/5.0 (compatible; crystelf-plugin RSS reader)"
+    }
+  }
+}
+```
 
 </details>
 <details>
@@ -88,7 +99,7 @@
 - 由于海外音源,搜歌时考虑使用繁体中文,英文等进行搜索以处理搜索不到的情况
 - 默认下载flac/CD无损级音乐,可在配置文件调整为mp3音质或直接通过语音发送
 - ~~可以听周杰伦~~
-- `#点歌晴天`
+- `版权点歌xxx`
 - `#听1`
 - `#听夜曲`
 
@@ -117,7 +128,3 @@
 | Onebot-Lgr      | 完全适配   |
 | Onebot-LLTwoBot | 部分适配   |
 | ICQQ            | 可能出现问题 |
-## 联系我们  
-如果遇到任何问题,欢迎提出issue或加入我们的QQ群进行交流.    
-闲聊群: [884788970](https://qun.qq.com/universal-share/share?ac=1&authKey=H6t8wQF4wz2okV93sQMB3X2ase0BdgAZQoKYQwf4iYIXY76TIynhInTYeRux1pGy&busi_data=eyJncm91cENvZGUiOiI4ODQ3ODg5NzAiLCJ0b2tlbiI6ImZVWGlqOHdIaUUwKzZtWmI2cU9wL1E5c2tBYzN5dDFqTzUyU29mazcwMmJmbkFXT1VobVhhbkRjbWhoMHR0WjciLCJ1aW4iOiIzNDc5NDQ1NzAzIn0%3D&data=yAdFXNuwB1TL2thCUrfZIhkO2Ud7PRHiwAGWH_Bd2Ev0L9rBfvpV7vfGb1xMqJsO8rvU_6ob-PI6JYt2EV8PtA&svctype=4&tempid=h5_group_info)  
-开发者咕咕群: [1023625838](https://qun.qq.com/universal-share/share?ac=1&authKey=CqKLFZD7YY51MiiN6h2gzTOCUHt8Nh6UhPj%2Bl9nMsugTnAU3A%2FWGh5ezqClno1HI&busi_data=eyJncm91cENvZGUiOiIxMDIzNjI1ODM4IiwidG9rZW4iOiIxZUMzdExTWTV6WTBnQngvNHVGT3dNZlVFWVJ6aVJEUS9sOEpZZnozaHUvRjYrVkxZa2kyMFFmMXVYQXBEdm1lIiwidWluIjoiMzQ3OTQ0NTcwMyJ9&data=FgsEtwv4kJmNCu_tw55iWkw5Sw7m4YTXf8RP4kHodaTfYJ8OfQraUe2dXw5OAWS4SqqzOfZmCjVravKMt9aJWg&svctype=4&tempid=h5_group_info)    
