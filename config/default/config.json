@@ -4,6 +4,8 @@
   "maxFeed": 10,
   "?maxRssDedupe": "RSS全局去重保留条数",
   "maxRssDedupe": 500,
+  "?rssCron": "RSS定时任务规则（cron表达式）",
+  "rssCron": "1/5,2/5 * * * *",
   "?autoUpdate": "是否自动更新插件",
   "autoUpdate": true,
   "poke": true,

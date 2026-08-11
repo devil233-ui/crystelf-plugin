@@ -10,6 +10,8 @@ import tools from "../components/tool.js";
 const MIYOUSHE_DETAIL_TTL = 30 * 60 * 1000;
 const MIYOUSHE_EMOJI_TTL = 24 * 60 * 60 * 1000;
 const MIYOUSHE_EMOJI_RETRY_TTL = 30 * 60 * 1000;
+// 每小时的 01、02、06、07、11、12... 分执行一次，给源端同步留一个短补偿窗口。
+const DEFAULT_RSS_CRON = "1/5,2/5 * * * *";
 // API reference: https://github.com/KeElena/miyoushe_emoji (MIT)
 const MIYOUSHE_EMOJI_API = "https://bbs-api-static.miyoushe.com/misc/api/emoticon_set?gids=2";
 let miyousheEmojiCache = { expiresAt: 0, items: new Map() };
@@ -194,15 +196,33 @@ export default class rssPush extends plugin {
 
         this.miyousheDetailCache = new Map();
 
-        const cronRule = "1/5 * * * *";
         if (!global.__rss_job_scheduled) {
-            schedule.scheduleJob(cronRule, () => {
-                logger.mark(`[rssPush] 定时触发 (${cronRule})`);
-                void this.pushFeeds().catch((err) => {
-                    logger.error("[rssPush] 定时推送任务异常", err);
+            const configuredCron = configControl.get("config")?.rssCron;
+            let cronRule = typeof configuredCron === "string" && configuredCron.trim()
+                ? configuredCron.trim()
+                : DEFAULT_RSS_CRON;
+
+            const registerJob = (rule) => {
+                const job = schedule.scheduleJob(rule, () => {
+                    logger.mark(`[rssPush] 定时触发 (${rule})`);
+                    void this.pushFeeds().catch((err) => {
+                        logger.error("[rssPush] 定时推送任务异常", err);
+                    });
                 });
-            });
+                if (!job) throw new Error("node-schedule 未创建任务");
+                global.__rss_job = job;
+            };
+
+            try {
+                registerJob(cronRule);
+            } catch (err) {
+                logger.warn(`[rssPush] RSS cron 配置无效 (${cronRule})，回退到默认规则 (${DEFAULT_RSS_CRON})`, err);
+                cronRule = DEFAULT_RSS_CRON;
+                registerJob(cronRule);
+            }
+
             global.__rss_job_scheduled = true;
+            logger.mark(`[rssPush] RSS 定时任务已注册 (${cronRule})`);
         }
     }
 

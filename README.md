@@ -64,6 +64,8 @@
 - `rss移除+id` 在本群移除某个订阅
 - `rss拉取+订阅地址` 测试拉取某个rss源
 - 全局去重默认保留500条已处理链接,可通过`config/config.json`中的`maxRssDedupe`调整
+- RSS轮询规则可通过`config/config.json`中的`rssCron`调整，默认`1/5,2/5 * * * *`，即每小时在`01、02、06、07、11、12...`分检查；修改后需重启插件生效
+- 注意：`1,2/5 * * * *`实际表示`01、02、07、12...`分，不是每个五分钟周期连续检查两次
 
 需要登录才能访问的RSS可在`config/rssAuth.json`中按域名配置Cookie。实际配置文件已被Git忽略,请勿把Cookie提交到仓库。以下示例让`esa.zlb.ink`复用`eo.zlb.ink`的认证信息:
 
