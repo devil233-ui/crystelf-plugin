@@ -12,6 +12,10 @@ const MIYOUSHE_EMOJI_TTL = 24 * 60 * 60 * 1000;
 const MIYOUSHE_EMOJI_RETRY_TTL = 30 * 60 * 1000;
 // 每小时的 01、02、06、07、11、12... 分执行一次，给源端同步留一个短补偿窗口。
 const DEFAULT_RSS_CRON = "1/5,2/5 * * * *";
+const RSS_CHANNELS = {
+    DEFAULT: "default",
+    LINUX_DO: "linux_do",
+};
 // API reference: https://github.com/KeElena/miyoushe_emoji (MIT)
 const MIYOUSHE_EMOJI_API = "https://bbs-api-static.miyoushe.com/misc/api/emoticon_set?gids=2";
 let miyousheEmojiCache = { expiresAt: 0, items: new Map() };
@@ -405,9 +409,12 @@ export default class rssPush extends plugin {
         if (Array.isArray(items)) {
             // 【终极必杀】既然底层 rssTools 会私吞 enclosure 标签，我们直接暴力请求源码自己抓！
             try {
-                const fetch = (await import("node-fetch")).default || global.fetch;
-                const res = await fetch(url);
-                const rawXml = await res.text();
+                let rawXml = "";
+                if (new URL(url).hostname.toLowerCase() !== "linux.do") {
+                    const fetch = (await import("node-fetch")).default || global.fetch;
+                    const res = await fetch(url);
+                    rawXml = await res.text();
+                }
 
                 // 按 <item> 切割源码，和 items 数组按顺序一一对应
                 const xmlItems = rawXml.split(/<item[^>]*>/i).slice(1);
@@ -572,126 +579,166 @@ export default class rssPush extends plugin {
     }
 
     async pushFeeds() {
-        if (global.__rss_push_running) {
-            if (global.logger) global.logger.warn("[rssPush] 上一轮仍在运行，本轮跳过");
-            return;
-        }
-        global.__rss_push_running = true;
-
-        try {
         let feeds = configControl.get("feeds");
         if (!Array.isArray(feeds)) return;
-        for (const feed of feeds) {
-            let latest;
+
+        const channels = new Map([
+            [ RSS_CHANNELS.DEFAULT, [] ],
+            [ RSS_CHANNELS.LINUX_DO, [] ],
+        ]);
+        feeds.forEach(feed => {
+            let channel = RSS_CHANNELS.DEFAULT;
             try {
-                latest = await this.getFeedData(feed.url);
-            } catch (e) {
-                continue;
+                if (new URL(feed.url).hostname.toLowerCase() === "linux.do") channel = RSS_CHANNELS.LINUX_DO;
+            } catch (err) {
+                if (global.logger) global.logger.warn(`[rssPush] RSS 地址无效，交由普通通道处理: ${feed.url}`);
             }
+            channels.get(channel).push(feed);
+        });
 
-            if (!latest?.length) continue;
+        await Promise.all([ ...channels.entries() ].map(([ channel, channelFeeds ]) => (
+            this.runFeedChannel(channel, channelFeeds)
+        )));
+    }
 
-            const newItems = [];
-            for (let i = 0; i < Math.min(latest.length, 5); i++) {
-                if (!(await rssCache.has("global_dedupe", latest[i].link))) {
-                    const pubDate = latest[i].date ? new Date(latest[i].date).getTime() : Date.now();
-                    if (Date.now() - pubDate < 86400000) {
-                        // 通过黑名单检测才允许推入发送队列
-                        if (!this.isFiltered(latest[i], feed.url)) {
-                            newItems.push(latest[i]);
-                        }
-                    }
-                }
-            }
-
-            if (!newItems.length) continue;
-            newItems.reverse();
-
-            for (const post of newItems) {
-                if (global.logger) global.logger.info(`[RSS推送] 准备发送: ${post.link}`);
-
-                const cleanTitle = post.title.trim();
-                let desc = this.formatContent(post.content);
-                if (desc.startsWith(cleanTitle)) desc = desc.substring(cleanTitle.length).trim();
-                const msgBody = `[RSS推送] ${cleanTitle}\n${desc ? desc + "\n" : ""}${post.link}\n${this.formatDate(post.date)}`;
-
-                let pushSuccess = false; // 【新增】标记变量：是否至少成功推送到了一个群
-
-                for (const groupId of feed.targetGroups) {
-                    await tools.sleep(2000);
-                    const group = Bot.pickGroup(groupId);
-                    if (!group) continue;
-
-                    try {
-                        if (desc.length > 800) {
-                            // 每 4000 字切片，分别做成独立的合并转发（折叠）推送
-                            let chunks = [];
-                            for (let i = 0; i < msgBody.length; i += 4000) {
-                                chunks.push(msgBody.substring(i, i + 4000));
-                            }
-                            for (let i = 0; i < chunks.length; i++) {
-                                const chunk = chunks[i];
-                                const forwardNode = [ { "message": chunk, "nickname": Bot.nickname, "user_id": Bot.uin } ];
-                                let msgToSend = chunk;
-                                try {
-                                    if (typeof group.makeForwardMsg === "function") {
-                                        msgToSend = await group.makeForwardMsg(forwardNode);
-                                    } else if (typeof Bot.makeForwardMsg === "function") {
-                                        msgToSend = await Bot.makeForwardMsg(forwardNode);
-                                    } else {
-                                        throw new Error("当前适配器不支持在定时任务中调用合并转发API");
-                                    }
-                                } catch (err) {
-                                    if (global.logger) global.logger.error(`[RSS推送] 制作第 ${i + 1} 个转发消息失败`, err);
-                                    msgToSend = `[RSS推送] ${cleanTitle} (第 ${i + 1} 部分)\n${chunk.substring(0, 500)}...\n(正文过长截断)\n${post.link}`;
-                                }
-                                await group.sendMsg(msgToSend);
-                                await tools.sleep(1000);
-                            }
-                            pushSuccess = true;
-                        } else {
-                            // 短动态直接单包发送
-                            await group.sendMsg(msgBody);
-                            pushSuccess = true;
-                        }
-                    } catch (err) {
-                        if (global.logger) global.logger.error(`[RSS推送] 群 ${groupId} 发送文本失败:`, err);
-                        continue;
-                    }
-
-                    if (feed.screenshot && (desc || post.content?.includes("<img") || post.image)) {
-                        const safeId = this.getSafeFilename(post.link);
-                        const tempPath = path.join(this.rssTempDir, `${safeId}_${groupId}.jpg`);
-
-                        let resPaths = [];
-                        try {
-                            resPaths = await screenshot.generateScreenshot(post, tempPath);
-                            if (resPaths && resPaths.length > 0) {
-                                for (const p of resPaths) {
-                                    if (fs.existsSync(p)) await group.sendMsg(segment.image(p));
-                                }
-                            }
-                        } catch (e) {
-                            // 忽略发送错误
-                        } finally {
-                            if (resPaths && resPaths.length > 0) {
-                                resPaths.forEach(p => { if (fs.existsSync(p)) fs.unlinkSync(p); });
-                            }
-                            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-                        }
-                    }
-                }
-
-                if (pushSuccess) {
-                    await rssCache.set("global_dedupe", post.link);
-                    if (global.logger) global.logger.info(`[RSS推送] 已写入去重缓存: ${post.link}`);
-                } else {
-                    if (global.logger) global.logger.warn(`[RSS推送] 致命失败：文章未成功推送到任何群聊，保留至下次重试 [${post.link}]`);
-                }
-            }
+    async runFeedChannel(channel, feeds) {
+        const lockKey = `__rss_push_running_${channel}`;
+        if (global[lockKey]) {
+            if (global.logger) global.logger.warn(`[rssPush] ${channel} 通道上一轮仍在拉取，本轮跳过`);
+            return;
         }
+        global[lockKey] = true;
+
+        try {
+            for (const feed of feeds) {
+                let latest;
+                try {
+                    latest = await this.getFeedData(feed.url);
+                } catch (e) {
+                    continue;
+                }
+
+                if (!latest?.length) continue;
+
+                const newItems = [];
+                for (let i = 0; i < Math.min(latest.length, 5); i++) {
+                    const post = latest[i];
+                    const pubDate = post.date ? new Date(post.date).getTime() : Date.now();
+                    if (Date.now() - pubDate >= 86400000 || this.isFiltered(post, feed.url)) continue;
+
+                    const reservation = await rssCache.reserve(post.link);
+                    if (reservation) newItems.push({ post, reservation });
+                }
+
+                if (!newItems.length) continue;
+                newItems.reverse();
+
+                for (const item of newItems) {
+                    this.enqueueFeedPost(feed, item);
+                }
+            }
         } finally {
-            global.__rss_push_running = false;
+            global[lockKey] = false;
+        }
+    }
+
+    enqueueFeedPost(feed, item) {
+        const previous = global.__rss_send_queue || Promise.resolve();
+        const current = previous
+            .catch(err => {
+                if (global.logger) global.logger.error("[rssPush] 上一项发送任务异常", err);
+            })
+            .then(() => this.sendFeedPost(feed, item));
+        global.__rss_send_queue = current;
+        void current.catch(err => {
+            if (global.logger) global.logger.error(`[rssPush] 发送队列任务异常: ${item.post.link}`, err);
+        });
+    }
+
+    async sendFeedPost(feed, item) {
+        const { post, reservation } = item;
+        let pushSuccess = false;
+        try {
+            if (global.logger) global.logger.info(`[RSS推送] 准备发送: ${post.link}`);
+
+            const cleanTitle = post.title.trim();
+            let desc = this.formatContent(post.content);
+            if (desc.startsWith(cleanTitle)) desc = desc.substring(cleanTitle.length).trim();
+            const msgBody = `[RSS推送] ${cleanTitle}\n${desc ? desc + "\n" : ""}${post.link}\n${this.formatDate(post.date)}`;
+
+            for (const groupId of feed.targetGroups) {
+                await tools.sleep(2000);
+                const group = Bot.pickGroup(groupId);
+                if (!group) continue;
+
+                try {
+                    if (desc.length > 800) {
+                        // 每 4000 字切片，分别做成独立的合并转发（折叠）推送
+                        let chunks = [];
+                        for (let i = 0; i < msgBody.length; i += 4000) {
+                            chunks.push(msgBody.substring(i, i + 4000));
+                        }
+                        for (let i = 0; i < chunks.length; i++) {
+                            const chunk = chunks[i];
+                            const forwardNode = [ { "message": chunk, "nickname": Bot.nickname, "user_id": Bot.uin } ];
+                            let msgToSend = chunk;
+                            try {
+                                if (typeof group.makeForwardMsg === "function") {
+                                    msgToSend = await group.makeForwardMsg(forwardNode);
+                                } else if (typeof Bot.makeForwardMsg === "function") {
+                                    msgToSend = await Bot.makeForwardMsg(forwardNode);
+                                } else {
+                                    throw new Error("当前适配器不支持在定时任务中调用合并转发API");
+                                }
+                            } catch (err) {
+                                if (global.logger) global.logger.error(`[RSS推送] 制作第 ${i + 1} 个转发消息失败`, err);
+                                msgToSend = `[RSS推送] ${cleanTitle} (第 ${i + 1} 部分)\n${chunk.substring(0, 500)}...\n(正文过长截断)\n${post.link}`;
+                            }
+                            await group.sendMsg(msgToSend);
+                            await tools.sleep(1000);
+                        }
+                        pushSuccess = true;
+                    } else {
+                        // 短动态直接单包发送
+                        await group.sendMsg(msgBody);
+                        pushSuccess = true;
+                    }
+                } catch (err) {
+                    if (global.logger) global.logger.error(`[RSS推送] 群 ${groupId} 发送文本失败:`, err);
+                    continue;
+                }
+
+                if (feed.screenshot && (desc || post.content?.includes("<img") || post.image)) {
+                    const safeId = this.getSafeFilename(post.link);
+                    const tempPath = path.join(this.rssTempDir, `${safeId}_${groupId}.jpg`);
+
+                    let resPaths = [];
+                    try {
+                        resPaths = await screenshot.generateScreenshot(post, tempPath);
+                        if (resPaths && resPaths.length > 0) {
+                            for (const p of resPaths) {
+                                if (fs.existsSync(p)) await group.sendMsg(segment.image(p));
+                            }
+                        }
+                    } catch (e) {
+                        // 忽略发送错误
+                    } finally {
+                        if (resPaths && resPaths.length > 0) {
+                            resPaths.forEach(p => { if (fs.existsSync(p)) fs.unlinkSync(p); });
+                        }
+                        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+                    }
+                }
+            }
+
+            if (pushSuccess) {
+                await rssCache.set("global_dedupe", post.link);
+                if (global.logger) global.logger.info(`[RSS推送] 已写入去重缓存: ${post.link}`);
+            } else if (global.logger) {
+                global.logger.warn(`[RSS推送] 致命失败：文章未成功推送到任何群聊，保留至下次重试 [${post.link}]`);
+            }
+        } finally {
+            await rssCache.release(post.link, reservation);
         }
     }
 

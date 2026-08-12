@@ -5,7 +5,26 @@ import configControl from "../../lib/config/configControl.js";
 const parser = new Parser();
 const HTTP2_TIMEOUT = 60000;
 const MAX_REDIRECTS = 5;
+const LINUX_DO_MAX_ATTEMPTS = 3;
+const LINUX_DO_RETRY_DELAYS = [ 1000, 3000 ];
 const DEFAULT_USER_AGENT = "Mozilla/5.0 (compatible; crystelf-plugin RSS reader)";
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+export function isLinuxDoFeed(feedUrl) {
+  try {
+    return new URL(feedUrl).hostname.toLowerCase() === "linux.do";
+  } catch {
+    return false;
+  }
+}
+
+function isRetryableLinuxDoError(err) {
+  const message = String(err?.message || err || "");
+  const status = Number(message.match(/Status code (\d+)/)?.[1]);
+  return [ 429, 502, 503, 504, 522, 524 ].includes(status)
+    || /ERR_HTTP2_(?:STREAM_CANCEL|GOAWAY_SESSION|INVALID_SESSION)|ECONNRESET|ETIMEDOUT|timed out/i.test(message);
+}
 
 export function buildFeedAuthHeaders(feedUrl, authConfig = {}) {
   const url = new URL(feedUrl);
@@ -107,7 +126,7 @@ const fetchWithHTTP2 = (feedUrl, redirectCount = 0) => {
   });
 };
 
-const parseURL = async(url) => {
+const parseURLOnce = async(url) => {
   const authHeaders = buildFeedAuthHeaders(url, configControl.get("rssAuth") || {});
   if (authHeaders.Cookie) {
     return parser.parseString(await fetchWithAuth(url, authHeaders));
@@ -116,9 +135,27 @@ const parseURL = async(url) => {
   try {
     return await parser.parseURL(url);
   } catch (err) {
-    if (!url.startsWith("https://") || err.message !== "Status code 403") throw err;
+    if (!url.startsWith("https://") || (err.message !== "Status code 403" && !isLinuxDoFeed(url))) throw err;
     return parser.parseString(await fetchWithHTTP2(url));
   }
+};
+
+const parseURL = async(url) => {
+  const maxAttempts = isLinuxDoFeed(url) ? LINUX_DO_MAX_ATTEMPTS : 1;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await parseURLOnce(url);
+    } catch (err) {
+      lastError = err;
+      if (attempt >= maxAttempts || !isRetryableLinuxDoError(err)) throw err;
+      const delay = LINUX_DO_RETRY_DELAYS[attempt - 1];
+      logger.warn(`[RSS] Linux.do 拉取失败，第 ${attempt}/${maxAttempts} 次，${delay}ms 后重试: ${url} (${err.message})`);
+      await sleep(delay);
+    }
+  }
+  throw lastError;
 };
 
 //去掉不干净的东西

@@ -4,7 +4,9 @@
   "description": "适配crystelf-core的Yunzai插件",
   "main": "index.js",
   "type": "module",
-  "scripts": {},
+  "scripts": {
+    "test": "node --test"
+  },
   "repository": {
     "type": "git",
     "url": ""
