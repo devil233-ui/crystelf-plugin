@@ -7,6 +7,12 @@
             "enabled": true,
             "cookie": "",
             "userAgent": "Mozilla/5.0 (compatible; crystelf-plugin RSS reader)"
+        },
+        "linux.do": {
+            "enabled": true,
+            "cookie": "",
+            "curlCffiPython": "",
+            "userAgent": "Mozilla/5.0 (compatible; crystelf-plugin RSS reader)"
         }
     }
 }

@@ -6,6 +6,8 @@
   "maxRssDedupe": 500,
   "?rssCron": "RSS定时任务规则（cron表达式）",
   "rssCron": "1/5,2/5 * * * *",
+  "?rssRetryCount": "RSS临时错误重试次数（不含首次请求，范围0-10）",
+  "rssRetryCount": 2,
   "?autoUpdate": "是否自动更新插件",
   "autoUpdate": true,
   "poke": true,

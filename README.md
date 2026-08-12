@@ -65,11 +65,23 @@
 - `rss拉取+订阅地址` 测试拉取某个rss源
 - 全局去重默认保留500条已处理链接,可通过`config/config.json`中的`maxRssDedupe`调整
 - RSS轮询规则可通过`config/config.json`中的`rssCron`调整，默认`1/5,2/5 * * * *`，即每小时在`01、02、06、07、11、12...`分检查；修改后需重启插件生效
+- 所有RSS源遇到429、502、503、504、522、524、连接超时或HTTP/2临时异常时会退避重试；`rssRetryCount`控制首次请求之外的重试次数，默认2、范围0-10
 - 定时轮询会将Linux.do与其他RSS分通道拉取，单个通道卡顿只会跳过该通道的下一轮；文章发送与截图仍统一串行，避免并发渲染争用
 - 待发送文章会先在Redis中原子占位，成功后写入全局去重缓存，失败则释放占位供下一轮重试
 - 注意：`1,2/5 * * * *`实际表示`01、02、07、12...`分，不是每个五分钟周期连续检查两次
 
-需要登录才能访问的RSS可在`config/rssAuth.json`中按域名配置Cookie。实际配置文件已被Git忽略,请勿把Cookie提交到仓库。以下示例让`esa.zlb.ink`复用`eo.zlb.ink`的认证信息:
+需要登录才能访问的RSS可在`config/rssAuth.json`中按域名配置Cookie。Linux.do的用户主题RSS由Discourse固定按匿名权限生成，配置Cookie后插件会额外调用登录接口，将仅登录可见的主题合并到公开RSS中；补全结果缓存15分钟，失败时回退公开RSS。
+
+Linux.do登录补全需要`curl_cffi`。建议为云崽建立独立虚拟环境，不要复用其他项目的环境：
+
+```bash
+uv venv --python 3.13 /root/Yunzai/.venv
+uv pip install --python /root/Yunzai/.venv/bin/python -r /root/Yunzai/plugins/crystelf-plugin/scripts/requirements-linuxdo.txt
+```
+
+然后通过`curlCffiPython`指定该环境的解释器。实际配置文件已被Git忽略，请勿把Cookie或机器专属路径提交到仓库。
+
+以下示例同时展示Linux.do登录主题补全，以及让`esa.zlb.ink`复用`eo.zlb.ink`的认证信息：
 
 ```json
 {
@@ -81,6 +93,11 @@
       "enabled": true,
       "cookie": "在此填写浏览器请求中的完整Cookie",
       "userAgent": "Mozilla/5.0 (compatible; crystelf-plugin RSS reader)"
+    },
+    "linux.do": {
+      "enabled": true,
+      "cookie": "在此填写Linux.do完整Cookie",
+      "curlCffiPython": "/root/Yunzai/.venv/bin/python"
     }
   }
 }

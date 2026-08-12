@@ -1,12 +1,14 @@
 import Parser from "rss-parser";
 import http2 from "node:http2";
 import configControl from "../../lib/config/configControl.js";
+import { fetchLinuxDoAuthenticatedItems, mergeLinuxDoItems } from "./linuxDoAuth.js";
 
 const parser = new Parser();
 const HTTP2_TIMEOUT = 60000;
 const MAX_REDIRECTS = 5;
-const LINUX_DO_MAX_ATTEMPTS = 3;
-const LINUX_DO_RETRY_DELAYS = [ 1000, 3000 ];
+const DEFAULT_RETRY_COUNT = 2;
+const MAX_RETRY_COUNT = 10;
+const RETRY_BASE_DELAY = 1000;
 const DEFAULT_USER_AGENT = "Mozilla/5.0 (compatible; crystelf-plugin RSS reader)";
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -19,7 +21,13 @@ export function isLinuxDoFeed(feedUrl) {
   }
 }
 
-function isRetryableLinuxDoError(err) {
+export function getRssRetryCount(config = {}) {
+  const retryCount = Number(config.rssRetryCount);
+  if (!Number.isInteger(retryCount)) return DEFAULT_RETRY_COUNT;
+  return Math.min(Math.max(retryCount, 0), MAX_RETRY_COUNT);
+}
+
+export function isRetryableFeedError(err) {
   const message = String(err?.message || err || "");
   const status = Number(message.match(/Status code (\d+)/)?.[1]);
   return [ 429, 502, 503, 504, 522, 524 ].includes(status)
@@ -67,7 +75,7 @@ const fetchWithAuth = async(feedUrl, headers, redirectCount = 0) => {
   return response.text();
 };
 
-const fetchWithHTTP2 = (feedUrl, redirectCount = 0) => {
+const fetchWithHTTP2 = (feedUrl, requestHeaders = {}, redirectCount = 0) => {
   return new Promise((resolve, reject) => {
     const url = new URL(feedUrl);
     const client = http2.connect(url.origin);
@@ -87,8 +95,10 @@ const fetchWithHTTP2 = (feedUrl, redirectCount = 0) => {
     const request = client.request({
       [http2.constants.HTTP2_HEADER_METHOD]: "GET",
       [http2.constants.HTTP2_HEADER_PATH]: `${url.pathname}${url.search}`,
-      [http2.constants.HTTP2_HEADER_ACCEPT]: "application/rss+xml",
-      [http2.constants.HTTP2_HEADER_USER_AGENT]: "rss-parser",
+      [http2.constants.HTTP2_HEADER_ACCEPT]: requestHeaders.Accept || "application/rss+xml",
+      [http2.constants.HTTP2_HEADER_USER_AGENT]: requestHeaders["User-Agent"] || "rss-parser",
+      ...(requestHeaders.Cookie ? { [http2.constants.HTTP2_HEADER_COOKIE]: requestHeaders.Cookie } : {}),
+      ...(requestHeaders.Referer ? { [http2.constants.HTTP2_HEADER_REFERER]: requestHeaders.Referer } : {}),
     });
 
     request.setEncoding("utf8");
@@ -112,7 +122,11 @@ const fetchWithHTTP2 = (feedUrl, redirectCount = 0) => {
         }
         client.close();
         settled = true;
-        fetchWithHTTP2(new URL(location, feedUrl).href, redirectCount + 1).then(resolve, reject);
+        const nextUrl = new URL(location, feedUrl);
+        const nextHeaders = nextUrl.origin === url.origin
+          ? requestHeaders
+          : Object.fromEntries(Object.entries(requestHeaders).filter(([ key ]) => key !== "Cookie"));
+        fetchWithHTTP2(nextUrl.href, nextHeaders, redirectCount + 1).then(resolve, reject);
         return;
       }
       if (status >= 300) {
@@ -129,7 +143,10 @@ const fetchWithHTTP2 = (feedUrl, redirectCount = 0) => {
 const parseURLOnce = async(url) => {
   const authHeaders = buildFeedAuthHeaders(url, configControl.get("rssAuth") || {});
   if (authHeaders.Cookie) {
-    return parser.parseString(await fetchWithAuth(url, authHeaders));
+    const xml = isLinuxDoFeed(url)
+      ? await fetchWithHTTP2(url, authHeaders)
+      : await fetchWithAuth(url, authHeaders);
+    return parser.parseString(xml);
   }
 
   try {
@@ -141,7 +158,8 @@ const parseURLOnce = async(url) => {
 };
 
 const parseURL = async(url) => {
-  const maxAttempts = isLinuxDoFeed(url) ? LINUX_DO_MAX_ATTEMPTS : 1;
+  const retryCount = getRssRetryCount(configControl.get("config") || {});
+  const maxAttempts = retryCount + 1;
   let lastError;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -149,9 +167,9 @@ const parseURL = async(url) => {
       return await parseURLOnce(url);
     } catch (err) {
       lastError = err;
-      if (attempt >= maxAttempts || !isRetryableLinuxDoError(err)) throw err;
-      const delay = LINUX_DO_RETRY_DELAYS[attempt - 1];
-      logger.warn(`[RSS] Linux.do 拉取失败，第 ${attempt}/${maxAttempts} 次，${delay}ms 后重试: ${url} (${err.message})`);
+      if (attempt >= maxAttempts || !isRetryableFeedError(err)) throw err;
+      const delay = RETRY_BASE_DELAY * 2 ** (attempt - 1);
+      logger.warn(`[RSS] 拉取失败，第 ${attempt}/${maxAttempts} 次，${delay}ms 后重试: ${url} (${err.message})`);
       await sleep(delay);
     }
   }
@@ -176,7 +194,7 @@ const rssTools = {
   async fetchFeed(url) {
     try {
       const feed = await parseURL(url);
-      return feed.items.map((item) => ({
+      const publicItems = feed.items.map((item) => ({
         title: item.title,
         link: item.link,
         content: cleanHTML(item["content:encoded"] || item.content || item.description || ""),
@@ -186,6 +204,25 @@ const rssTools = {
         feedLink: feed.link,
         image: feed.image?.url || feed.logo || "",
       }));
+      if (!isLinuxDoFeed(url)) return publicItems;
+
+      try {
+        const authenticatedItems = await fetchLinuxDoAuthenticatedItems(
+          url,
+          configControl.get("rssAuth") || {},
+          getRssRetryCount(configControl.get("config") || {}),
+        );
+        const normalizedItems = authenticatedItems.map(item => ({
+          ...item,
+          content: cleanHTML(item.content || ""),
+          feedTitle: feed.title,
+          feedLink: feed.link,
+        }));
+        return mergeLinuxDoItems(publicItems, normalizedItems);
+      } catch (err) {
+        logger.warn(`[RSS] Linux.do登录主题补全失败，回退公开RSS: ${url} (${err.message})`);
+        return publicItems;
+      }
     } catch (err) {
       logger.error(`RSS 拉取失败: ${url}`, err);
       return null;
