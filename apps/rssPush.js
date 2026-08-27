@@ -117,11 +117,13 @@ export function renderMiyousheStructuredContent(structuredContent, emojiMap = ne
     const blocks = JSON.parse(structuredContent);
     const renderedCardIds = new Set();
     let html = "";
-    let line = "";
+    let paragraph = "";
+    let pendingBreak = false;
 
-    const flushLine = (attributes = {}) => {
-        const content = line.trim();
-        line = "";
+    const flushParagraph = (attributes = {}) => {
+        const content = paragraph.trim();
+        paragraph = "";
+        pendingBreak = false;
         if (!content) return;
 
         if (attributes.header === 1) {
@@ -138,18 +140,39 @@ export function renderMiyousheStructuredContent(structuredContent, emojiMap = ne
         }
     };
 
+    const appendText = (text, attributes) => {
+        if (!text) return;
+        if (pendingBreak) {
+            if (paragraph) paragraph += "<br>";
+            pendingBreak = false;
+        }
+        paragraph += renderMiyousheInlineText(text, attributes, emojiMap);
+    };
+
+    const handleNewline = (attributes = {}) => {
+        if (attributes.header || attributes.blockquote || attributes.list) {
+            flushParagraph(attributes);
+            return;
+        }
+        if (pendingBreak) {
+            flushParagraph();
+            return;
+        }
+        pendingBreak = true;
+    };
+
     blocks.forEach(block => {
         if (typeof block.insert === "string") {
             const segments = block.insert.split("\n");
             segments.forEach((segment, index) => {
-                if (segment) line += renderMiyousheInlineText(segment, block.attributes, emojiMap);
-                if (index < segments.length - 1) flushLine(block.attributes);
+                appendText(segment, block.attributes);
+                if (index < segments.length - 1) handleNewline(block.attributes);
             });
             return;
         }
 
         if (typeof block.insert !== "object" || !block.insert) return;
-        flushLine();
+        flushParagraph();
 
         if (block.insert.image) {
             const image = safeUrl(block.insert.image);
@@ -171,8 +194,25 @@ export function renderMiyousheStructuredContent(structuredContent, emojiMap = ne
         }
     });
 
-    flushLine();
+    flushParagraph();
     return { html, renderedCardIds };
+}
+
+export function formatRssContent(html) {
+    if (!html) return "";
+    let text = html.replace(/<div\s+class=["']miyoushe-topics["'][^>]*>([\s\S]*?)<\/div>/gi, (_, topics) => {
+        const labels = topics
+            .replace(/<span[^>]*>/gi, "")
+            .replace(/<\/span>/gi, " · ")
+            .replace(/\s*·\s*$/, "");
+        return `\n\n标签：${labels}\n`;
+    }).replace(/<\/li>|<\/ul>|<\/p>/gi, "\n")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/h[1-6]>/gi, "\n\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+        .replace(/&quot;/g, "\"").replace(/&#39;/g, "'");
+    return text.split("\n").map(l => l.trim()).filter(l => l).join("\n");
 }
 
 export default class rssPush extends plugin {
@@ -241,14 +281,7 @@ export default class rssPush extends plugin {
     }
 
     formatContent(html) {
-        if (!html) return "";
-        let text = html.replace(/<\/li>|<\/ul>|<\/p>/gi, "\n")
-            .replace(/<br\s*\/?>/gi, "\n")
-            .replace(/<\/h[1-6]>/gi, "\n\n")
-            .replace(/<[^>]+>/g, "")
-            .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
-            .replace(/&quot;/g, "\"").replace(/&#39;/g, "'");
-        return text.split("\n").map(l => l.trim()).filter(l => l).join("\n");
+        return formatRssContent(html);
     }
 
     formatDate(dateStr) {
