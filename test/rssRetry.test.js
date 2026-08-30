@@ -3,7 +3,7 @@ import test from "node:test";
 
 global.logger = { error() {}, warn() {} };
 
-const { getRssRetryCount, isRetryableFeedError } = await import("../modules/rss/rss.js");
+const { getRssRetryCount, isRetryableFeedError, shouldUseHTTP2Fallback } = await import("../modules/rss/rss.js");
 
 test("RSS重试次数默认两次并限制在0到10", () => {
   assert.equal(getRssRetryCount({}), 2);
@@ -23,4 +23,12 @@ test("只重试临时HTTP状态和网络异常", () => {
   assert.equal(isRetryableFeedError(new Error("Request timed out after 60000ms")), true);
   assert.equal(isRetryableFeedError(new Error("Status code 403")), false);
   assert.equal(isRetryableFeedError(new Error("Invalid XML")), false);
+});
+
+test("HTTP/2只作为Linux.do的403回退，普通源保持HTTP/1.1", () => {
+  const forbidden = new Error("Status code 403");
+  assert.equal(shouldUseHTTP2Fallback("https://linux.do/u/test/activity/topics.rss", forbidden), true);
+  assert.equal(shouldUseHTTP2Fallback("https://gg.deals/us/news/epic-games-mobile-freebies/feed", forbidden), false);
+  assert.equal(shouldUseHTTP2Fallback("http://linux.do/u/test/activity/topics.rss", forbidden), false);
+  assert.equal(shouldUseHTTP2Fallback("https://linux.do/u/test/activity/topics.rss", new Error("Status code 502")), false);
 });

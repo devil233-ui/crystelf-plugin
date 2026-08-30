@@ -21,6 +21,17 @@ export function isLinuxDoFeed(feedUrl) {
   }
 }
 
+export function shouldUseHTTP2Fallback(feedUrl, err) {
+  try {
+    const url = new URL(feedUrl);
+    return url.protocol === "https:"
+      && url.hostname.toLowerCase() === "linux.do"
+      && String(err?.message || err) === "Status code 403";
+  } catch {
+    return false;
+  }
+}
+
 export function getRssRetryCount(config = {}) {
   const retryCount = Number(config.rssRetryCount);
   if (!Number.isInteger(retryCount)) return DEFAULT_RETRY_COUNT;
@@ -152,7 +163,7 @@ const parseURLOnce = async(url) => {
   try {
     return await parser.parseURL(url);
   } catch (err) {
-    if (!url.startsWith("https://") || (err.message !== "Status code 403" && !isLinuxDoFeed(url))) throw err;
+    if (!shouldUseHTTP2Fallback(url, err)) throw err;
     return parser.parseString(await fetchWithHTTP2(url));
   }
 };
