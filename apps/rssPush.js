@@ -198,9 +198,36 @@ export function renderMiyousheStructuredContent(structuredContent, emojiMap = ne
     return { html, renderedCardIds };
 }
 
+function decodeHtmlEntities(value) {
+    const entities = { amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " " };
+    return value.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (match, entity) => {
+        const name = entity.toLowerCase();
+        if (!name.startsWith("#")) return entities[name];
+        const code = name.startsWith("#x") ? parseInt(name.slice(2), 16) : Number(name.slice(1));
+        return code > 0 && code <= 0x10FFFF && !(code >= 0xD800 && code <= 0xDFFF)
+            ? String.fromCodePoint(code)
+            : match;
+    });
+}
+
+function expandRssLinks(html) {
+    // 在移除HTML标签前，把正文超链接展开为名称和独占一行的网址。
+    return html.replace(/<a\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/a\s*>/gi, (_, attributes, label) => {
+        const hrefAttribute = [ ...attributes.matchAll(/([^\s"'<>/=]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g) ]
+            .find(attribute => attribute[1].toLowerCase() === "href");
+        const href = decodeHtmlEntities(hrefAttribute?.[2] ?? hrefAttribute?.[3] ?? hrefAttribute?.[4] ?? "").trim();
+        const url = safeUrl(href);
+        if (!url) return label;
+
+        const visibleText = decodeHtmlEntities(label.replace(/<[^>]+>/g, "")).trim();
+        if (visibleText === href || visibleText === decodeHtmlEntities(url)) return label;
+        return `${label}\n${url}\n`;
+    });
+}
+
 export function formatRssContent(html) {
     if (!html) return "";
-    let text = html.replace(/<div\s+class=["']miyoushe-topics["'][^>]*>([\s\S]*?)<\/div>/gi, (_, topics) => {
+    let text = expandRssLinks(html).replace(/<div\s+class=["']miyoushe-topics["'][^>]*>([\s\S]*?)<\/div>/gi, (_, topics) => {
         const labels = topics
             .replace(/<span[^>]*>/gi, "")
             .replace(/<\/span>/gi, " · ")
@@ -209,9 +236,8 @@ export function formatRssContent(html) {
     }).replace(/<\/li>|<\/ul>|<\/p>/gi, "\n")
         .replace(/<br\s*\/?>/gi, "\n")
         .replace(/<\/h[1-6]>/gi, "\n\n")
-        .replace(/<[^>]+>/g, "")
-        .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
-        .replace(/&quot;/g, "\"").replace(/&#39;/g, "'");
+        .replace(/<[^>]+>/g, "");
+    text = decodeHtmlEntities(text);
     return text.split("\n").map(l => l.trim()).filter(l => l).join("\n");
 }
 
