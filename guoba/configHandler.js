@@ -3,6 +3,7 @@ import Path from "../constants/path.js";
 import lodash from "lodash";
 import fs from "fs";
 import path from "path";
+import { isSafeSegment } from "../lib/system/safePath.js";
 
 /**
  * 配置处理逻辑
@@ -69,6 +70,11 @@ export async function setConfigData(data, { Result }) {
     for (const [ fieldPath, value ] of Object.entries(data)) {
       const parts = fieldPath.split(".");
       const configName = parts[0];
+
+      // 配置名会参与配置文件路径拼接，先确认它不含路径分隔符或上跳片段
+      if (!isSafeSegment(configName)) {
+        return Result.error({}, "配置项名称不合法，已取消保存");
+      }
 
       // 跳过feeds和newcomer配置
       if (configName === "feeds" || configName === "newcomer") continue;

@@ -6,6 +6,7 @@ import fs from "fs";
 import rssCache from "../lib/rss/rssCache.js";
 import schedule from "node-schedule";
 import tools from "../components/tool.js";
+import { isSafeSegment } from "../lib/system/safePath.js";
 
 const MIYOUSHE_DETAIL_TTL = 30 * 60 * 1000;
 const MIYOUSHE_EMOJI_TTL = 24 * 60 * 60 * 1000;
@@ -769,7 +770,8 @@ export default class rssPush extends plugin {
 
                 if (feed.screenshot && (desc || post.content?.includes("<img") || post.image)) {
                     const safeId = this.getSafeFilename(post.link);
-                    const tempPath = path.join(this.rssTempDir, `${safeId}_${groupId}.jpg`);
+                    const groupTag = isSafeSegment(groupId) ? String(groupId) : "group";
+                    const tempPath = path.join(this.rssTempDir, `${safeId}_${groupTag}.jpg`);
 
                     let resPaths = [];
                     try {

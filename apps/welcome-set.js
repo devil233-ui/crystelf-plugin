@@ -1,5 +1,6 @@
 import configControl from "../lib/config/configControl.js";
 import YunzaiUtils from "../lib/yunzai/utils.js";
+import { isSafeSegment, safeJoin } from "../lib/system/safePath.js";
 import path from "path";
 import Path from "./../constants/path.js";
 import fs from "fs";
@@ -38,6 +39,9 @@ export class welcomeNewcomerSetting extends plugin {
     if (!(e.isMaster || [ "owner", "admin" ].includes(e.sender?.role))) {
       return e.reply("只有群主或管理员可以设置欢迎消息哦~", true);
     }
+    if (!isSafeSegment(e.group_id)) {
+      return e.reply("无法识别当前群号，已取消设置..", true);
+    }
     const groupId = e.group_id;
     const type = e.msg.includes("文案") ? "text" : "image";
     const allCfg = configControl.get("newcomer") || {};
@@ -57,7 +61,7 @@ export class welcomeNewcomerSetting extends plugin {
       if (!imgs?.length) return e.reply("未检测到图片..", true);
 
       const imgUrl = imgs[0];
-      const groupDir = path.join(Path.config, "newcomer", String(e.group_id));
+      const groupDir = safeJoin(Path.config, "newcomer", e.group_id);
       const filePath = path.join(groupDir, "1");
 
       try {
